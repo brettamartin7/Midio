@@ -70,7 +70,6 @@ def to_note(input_key):
 # Convert active notes to a chord
 def to_chord(active_keys):
     base_values = frozenset({to_note(key) for key in active_keys})
-    logging.info("base values: {0}".format(base_values))
     chord = ""
     try:
         chord = note_chord_dict[base_values]
@@ -101,6 +100,7 @@ def update_active_notes(note_type, note, chord_label, notes_label):
         logging.info(active_notes)
         update_labels(chord_label, notes_label)
         active_note_mutex.release()
+
 
 def update_labels(chord_label, notes_label):
     chord = to_chord(frozenset(active_notes))
@@ -133,6 +133,7 @@ if __name__ == "__main__":
     win = gui.Window()
 
     # Note Monitor thread
+    logging.info(mido.get_input_names())
     monitor_thread = threading.Thread(target=input_monitor, daemon=True, args=(win.chord_label, win.notes_label,))
     monitor_thread.start()
 
