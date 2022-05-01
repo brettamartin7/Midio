@@ -97,48 +97,6 @@ class Piano(object):
         self.b4.setText("")
         self.b4.setObjectName("white_key")
 
-        self.c5 = QPushButton(self.centralwidget)
-        self.c5.setGeometry(QRect(300, 30, 41, 181))
-        self.c5.setStyleSheet(whiteKeyStyleSheet)
-        self.c5.setText("")
-        self.c5.setObjectName("white_key")
-
-        self.d5 = QPushButton(self.centralwidget)
-        self.d5.setGeometry(QRect(340, 30, 41, 181))
-        self.d5.setStyleSheet(whiteKeyStyleSheet)
-        self.d5.setText("")
-        self.d5.setObjectName("white_key")
-
-        self.a5 = QPushButton(self.centralwidget)
-        self.a5.setGeometry(QRect(500, 30, 41, 181))
-        self.a5.setStyleSheet(whiteKeyStyleSheet)
-        self.a5.setText("")
-        self.a5.setObjectName("white_key")
-
-        self.e5 = QPushButton(self.centralwidget)
-        self.e5.setGeometry(QRect(380, 30, 41, 181))
-        self.e5.setStyleSheet(whiteKeyStyleSheet)
-        self.e5.setText("")
-        self.e5.setObjectName("white_key")
-
-        self.g5 = QPushButton(self.centralwidget)
-        self.g5.setGeometry(QRect(460, 30, 41, 181))
-        self.g5.setStyleSheet(whiteKeyStyleSheet)
-        self.g5.setText("")
-        self.g5.setObjectName("white_key")
-
-        self.f5 = QPushButton(self.centralwidget)
-        self.f5.setGeometry(QRect(420, 30, 41, 181))
-        self.f5.setStyleSheet(whiteKeyStyleSheet)
-        self.f5.setText("")
-        self.f5.setObjectName("white_key")
-
-        self.b5 = QPushButton(self.centralwidget)
-        self.b5.setGeometry(QRect(540, 30, 41, 181))
-        self.b5.setStyleSheet(whiteKeyStyleSheet)
-        self.b5.setText("")
-        self.b5.setObjectName("white_key")
-
         self.f40 = QPushButton(self.centralwidget)
         self.f40.setGeometry(QRect(160, 30, 31, 111))
         self.f40.setStyleSheet(blackKeyStyleSheet)
@@ -157,35 +115,6 @@ class Piano(object):
         self.a40.setText("")
         self.a40.setObjectName("black_key")
 
-        self.c50 = QPushButton(self.centralwidget)
-        self.c50.setGeometry(QRect(320, 30, 31, 111))
-        self.c50.setStyleSheet(blackKeyStyleSheet)
-        self.c50.setText("")
-        self.c50.setObjectName("black_key")
-
-        self.d50 = QPushButton(self.centralwidget)
-        self.d50.setGeometry(QRect(360, 30, 31, 111))
-        self.d50.setStyleSheet(blackKeyStyleSheet)
-        self.d50.setText("")
-        self.d50.setObjectName("black_key")
-
-        self.f50 = QPushButton(self.centralwidget)
-        self.f50.setGeometry(QRect(440, 30, 31, 111))
-        self.f50.setStyleSheet(blackKeyStyleSheet)
-        self.f50.setText("")
-        self.f50.setObjectName("black_key")
-
-        self.g50 = QPushButton(self.centralwidget)
-        self.g50.setGeometry(QRect(480, 30, 31, 111))
-        self.g50.setStyleSheet(blackKeyStyleSheet)
-        self.g50.setText("")
-        self.g50.setObjectName("black_key")
-
-        self.a50 = QPushButton(self.centralwidget)
-        self.a50.setGeometry(QRect(520, 30, 31, 111))
-        self.a50.setStyleSheet(blackKeyStyleSheet)
-        self.a50.setText("")
-        self.a50.setObjectName("black_key")
 
         self.c4.raise_()
         self.d4.raise_()
@@ -196,37 +125,24 @@ class Piano(object):
         self.g4.raise_()
         self.a4.raise_()
         self.b4.raise_()
-        self.c5.raise_()
-        self.d5.raise_()
-        self.a5.raise_()
-        self.e5.raise_()
-        self.g5.raise_()
-        self.f5.raise_()
-        self.b5.raise_()
         self.f40.raise_()
         self.g40.raise_()
         self.a40.raise_()
-        self.c50.raise_()
-        self.d50.raise_()
-        self.f50.raise_()
-        self.g50.raise_()
-        self.a50.raise_()
-        self.a50.click()
 
         # Define note dictionary
         self.piano_note_dict = {
-            "C": [self.c4, self.c5],
-            "C#/Db": [self.c40, self.c50],
-            "D": [self.d4, self.d5],
-            "D#/Eb": [self.d40, self.d50],
-            "E": [self.e4, self.e5],
-            "F": [self.f4, self.f5],
-            "F#/Gb": [self.f40, self.f50],
-            "G": [self.g4, self.g5],
-            "G#/Ab": [self.g40, self.g50],
-            "A": [self.a4, self.a5],
-            "A#/Bb": [self.a40, self.a50],
-            "B": [self.b4, self.b5]
+            "C": self.c4,
+            "C#/Db": self.c40,
+            "D": self.d4,
+            "D#/Eb": self.d40,
+            "E": self.e4,
+            "F": self.f4,
+            "F#/Gb": self.f40,
+            "G": self.g4,
+            "G#/Ab": self.g40,
+            "A": self.a4,
+            "A#/Bb": self.a40,
+            "B": self.b4
         }
 
         self.centralwidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -236,15 +152,13 @@ class Piano(object):
     # Roast me, makes sense for how this works
     def activate_button(self, note):
         try:
-            self.piano_note_dict[note][0].setDisabled(True)
-            self.piano_note_dict[note][1].setDisabled(True)
+            self.piano_note_dict[note].setDisabled(True)
         except Exception as e:
             logging.warning(e)
 
     def deactivate_button(self, note):
         try:
-            self.piano_note_dict[note][0].setDisabled(False)
-            self.piano_note_dict[note][1].setDisabled(False)
+            self.piano_note_dict[note].setDisabled(False)
         except Exception as e:
             logging.warning(e)
 
