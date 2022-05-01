@@ -62,10 +62,12 @@ note_chord_dict = {
     frozenset({"B", "D", "F#/Gb"}): "B minor"
 }
 
+
 # Convert a key to a note
 def to_note(input_key):
     base_value = input_key % 12  # Convert key to base value for the note
     return key_note_dict.get(base_value, "invalid_key: {0}".format(input_key))
+
 
 # Convert active notes to a chord
 def to_chord(active_keys):
@@ -85,15 +87,18 @@ def signal_handler(sig, frame):
 
 
 # Activated by the thread. Appends/removes to active_notes list and then updates the GUI
-def update_active_notes(note_type, note, chord_label, notes_label):
+# Note param is a number here
+def update_active_notes(note_type, note, chord_label, notes_label, piano):
     active_note_mutex.acquire()
     try:
         if note_type == "note_on":
             if note not in active_notes:
                 active_notes.append(note)
+                piano.activate_button(to_note(note))
         elif note_type == "note_off":
             if note in active_notes:
                 active_notes.remove(note)
+                piano.deactivate_button(to_note(note))
 
     finally:
         logging.info("active_notes: ")
@@ -113,16 +118,21 @@ def update_labels(chord_label, notes_label):
 
 
 # Thread function, the for loop triggers when a note is pressed.
-def input_monitor(chord_label, notes_label):
+def input_monitor(chord_label, notes_label, piano):
     logging.info("Starting input monitor...")
-    with mido.open_input('MPK249 0') as input_port:
-        while True:
-            for msg in input_port:
-                try:
-                    update_active_notes(msg.type, msg.note - key_offset, chord_label, notes_label)  # Makes the first key 0
-                except Exception as e:
-                    logging.warning(e)
-                    print(msg)
+    try:
+        with mido.open_input('MPK249 0') as input_port:
+            while True:
+                for msg in input_port:
+                    try:
+                        update_active_notes(msg.type, msg.note - key_offset, chord_label, notes_label, piano)  # Makes the first key 0
+                    except Exception as e:
+                        logging.warning(e)
+                        print(msg)
+    except OSError as oh_no:
+        logging.error(oh_no)
+        return
+
 
 
 if __name__ == "__main__":
@@ -140,7 +150,7 @@ if __name__ == "__main__":
     # Note Monitor thread
     logging.info(mido.get_input_names())
     logging.info(mido.get_output_names())
-    monitor_thread = threading.Thread(target=input_monitor, daemon=True, args=(win.chord_label, win.notes_label,))
+    monitor_thread = threading.Thread(target=input_monitor, daemon=True, args=(win.chord_label, win.notes_label, piano,))
     monitor_thread.start()
 
     sys.exit(app.exec_())

@@ -3,32 +3,40 @@ import sys
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
+import logging
 
 blackKeyStyleSheet = \
-"""
-#black_key{\n
+    """
+#black_key:active{\n
 background-color: rgb(0, 0, 0);\n
 background-color: qlineargradient(spread:pad, x1:0.028, y1:0.619, x2:1, y2:0.494, stop:0.852273 rgba(0, 0, 0, 250), stop:1 rgba(255, 255, 255, 255));\n
 }\n
-#black_key:pressed{\n
-background-color: rgb(255, 0, 0);\n
+#black_key:disabled{\n
+background-color: rgb(255, 50, 0);\n
 \n
 background-color: qlineargradient(spread:pad, x1:0.857955, y1:0.0170455, x2:1, y2:0, stop:0.125 rgba(200, 0, 0, 255), stop:0.977273 rgba(255, 255, 255, 255));\n
+border-style: solid;\n
+border-width: 2px;\n
+border-color: black;\n
 \n
 }\n
 """
 
 whiteKeyStyleSheet = \
-"""
-#white_key{\n
+    """
+#white_key:active{\n
 background-color: rgb(242, 242, 242);\n
 background-color: qlineargradient(spread:pad, x1:1, y1:0.711, x2:0.903455, y2:0.711, stop:0 rgba(0, 0, 0, 255), stop:1 rgba(255, 255, 255, 255));\n
 }\n
-#white_key:pressed{\n
+#white_key:disabled{\n
 background-color: rgb(240, 0, 0);\n
+border-style: solid;\n
+border-width: 2px;\n
+border-color: black;\n
 \n
 }\n
 """
+
 
 class Piano(object):
     def __init__(self, main_window):
@@ -203,10 +211,42 @@ class Piano(object):
         self.f50.raise_()
         self.g50.raise_()
         self.a50.raise_()
+        self.a50.click()
+
+        # Define note dictionary
+        self.piano_note_dict = {
+            "C": [self.c4, self.c5],
+            "C#/Db": [self.c40, self.c50],
+            "D": [self.d4, self.d5],
+            "D#/Eb": [self.d40, self.d50],
+            "E": [self.e4, self.e5],
+            "F": [self.f4, self.f5],
+            "F#/Gb": [self.f40, self.f50],
+            "G": [self.g4, self.g5],
+            "G#/Ab": [self.g40, self.g50],
+            "A": [self.a4, self.a5],
+            "A#/Bb": [self.a40, self.a50],
+            "B": [self.b4, self.b5]
+        }
 
         self.centralwidget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.centralwidget.resize(400, 400)
-        main_window.layout.addWidget(self.centralwidget, 2, 0)
+        self.centralwidget.resize(400, 1000)
+        main_window.layout.addWidget(self.centralwidget)
+
+    # Roast me, makes sense for how this works
+    def activate_button(self, note):
+        try:
+            self.piano_note_dict[note][0].setDisabled(True)
+            self.piano_note_dict[note][1].setDisabled(True)
+        except Exception as e:
+            logging.warning(e)
+
+    def deactivate_button(self, note):
+        try:
+            self.piano_note_dict[note][0].setDisabled(False)
+            self.piano_note_dict[note][1].setDisabled(False)
+        except Exception as e:
+            logging.warning(e)
 
 class Window(QWidget):
     def __init__(self, *args, **kwargs):
@@ -214,23 +254,24 @@ class Window(QWidget):
 
         self.chord_label = QLabel("Chord", self)
         self.chord_label.setFont(QFont('Times', 200))
-        self.chord_label.resize(400,400)
+        self.chord_label.resize(300, 300)
         self.chord_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.chord_label.setAlignment(Qt.AlignCenter)
         self.chord_label.setStyleSheet("QLabel {background-color: white;}")
 
         self.notes_label = QLabel("Active Notes", self)
         self.notes_label.setFont(QFont('Times', 40))
-        self.notes_label.resize(400, 400)
+        self.notes_label.resize(300, 300)
         self.notes_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.notes_label.setAlignment(Qt.AlignCenter)
         self.notes_label.setStyleSheet("QLabel {background-color: white;}")
 
-        self.layout = QGridLayout()
-        self.layout.addWidget(self.chord_label, 0, 0)
-        self.layout.addWidget(self.notes_label, 1, 0)
+        self.layout = QVBoxLayout()
+        self.layout.addWidget(self.chord_label)
+        self.layout.addWidget(self.notes_label)
+        self.layout.setAlignment(Qt.AlignCenter)
         self.setLayout(self.layout)
-        self.resize(800,800)
+        self.resize(800, 800)
         self.show()
 
     def setNote(self, input_note):
