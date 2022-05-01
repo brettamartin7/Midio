@@ -107,7 +107,7 @@ def update_labels(chord_label, notes_label):
     if chord == "Invalid chord":
         chord_label.setFont(QFont('Times', 30))
     else:
-        chord_label.setFont(QFont('Times', 200))
+        chord_label.setFont(QFont('Times', 100))
     chord_label.setText(chord)
     notes_label.setText(''.join(to_note(key) + ' ' for key in set(active_notes)))
 
@@ -118,7 +118,11 @@ def input_monitor(chord_label, notes_label):
     with mido.open_input('MPK249 0') as input_port:
         while True:
             for msg in input_port:
-                update_active_notes(msg.type, msg.note - key_offset, chord_label, notes_label)  # Makes the first key 0
+                try:
+                    update_active_notes(msg.type, msg.note - key_offset, chord_label, notes_label)  # Makes the first key 0
+                except Exception as e:
+                    logging.warning(e)
+                    print(msg)
 
 
 if __name__ == "__main__":
@@ -131,9 +135,11 @@ if __name__ == "__main__":
     # GUI
     app = gui.QApplication(sys.argv)
     win = gui.Window()
+    piano = gui.Piano(win)
 
     # Note Monitor thread
     logging.info(mido.get_input_names())
+    logging.info(mido.get_output_names())
     monitor_thread = threading.Thread(target=input_monitor, daemon=True, args=(win.chord_label, win.notes_label,))
     monitor_thread.start()
 
