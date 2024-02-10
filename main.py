@@ -62,12 +62,10 @@ note_chord_dict = {
     frozenset({"B", "D", "F#/Gb"}): "B minor"
 }
 
-
 # Convert a key to a note
 def to_note(input_key: int):
     base_value = input_key % 12  # Convert key to base value for the note
     return key_note_dict.get(base_value, "invalid_key: {0}".format(input_key))
-
 
 # Convert active notes to a chord
 def to_chord(active_keys: frozenset):
@@ -80,11 +78,9 @@ def to_chord(active_keys: frozenset):
 
     return chord
 
-
 def signal_handler(sig, frame):
     print('Exiting...')
     sys.exit(0)
-
 
 # Activated by the thread. Appends/removes to active_notes list and then updates the GUI
 def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
@@ -105,7 +101,6 @@ def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_la
         update_labels(chord_label, notes_label)
         active_note_mutex.release()
 
-
 def update_labels(chord_label: QLabel, notes_label: QLabel):
     chord = to_chord(frozenset(active_notes))
     if chord == "Invalid chord":
@@ -114,7 +109,6 @@ def update_labels(chord_label: QLabel, notes_label: QLabel):
         chord_label.setFont(QFont('Times', 100))
     chord_label.setText(chord)
     notes_label.setText(''.join(to_note(key) + ' ' for key in set(active_notes)))
-
 
 # Thread function, the for loop triggers when a note is pressed.
 def input_monitor(chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
@@ -131,7 +125,6 @@ def input_monitor(chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
     except OSError as oh_no:
         logging.error(oh_no)
         return
-
 
 if __name__ == "__main__":
     format = "%(asctime)s %(filename)s:%(lineno)d - %(message)s"
