@@ -94,10 +94,10 @@ def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_la
             if note in active_notes:
                 active_notes.remove(note)
                 piano.deactivate_button(to_note(note))
+    except Exception as e:
+        logging.error("Encountered an error in update_active_notes: " + e)
 
     finally:
-        logging.info("active_notes: ")
-        logging.info(active_notes)
         update_labels(chord_label, notes_label)
         active_note_mutex.release()
 
@@ -114,7 +114,7 @@ def update_labels(chord_label: QLabel, notes_label: QLabel):
 def input_monitor(chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
     logging.info("Starting input monitor...")
     try:
-        with mido.open_input('MPK249 0') as input_port:
+        with mido.open_input('MPK249 Port A') as input_port:
             while True:
                 for msg in input_port:
                     try:

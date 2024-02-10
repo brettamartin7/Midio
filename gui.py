@@ -171,14 +171,14 @@ class Window(QWidget):
         self.chord_label.resize(300, 300)
         self.chord_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.chord_label.setAlignment(Qt.AlignCenter)
-        self.chord_label.setStyleSheet("QLabel {background-color: white;}")
+        self.chord_label.setStyleSheet("QLabel {background-color: white; color: black;}")
 
         self.notes_label = QLabel("Active Notes", self)
         self.notes_label.setFont(QFont('Times', 40))
         self.notes_label.resize(300, 300)
         self.notes_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.notes_label.setAlignment(Qt.AlignCenter)
-        self.notes_label.setStyleSheet("QLabel {background-color: white;}")
+        self.notes_label.setStyleSheet("QLabel {background-color: white; color: black;}")
 
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.chord_label)
