@@ -64,13 +64,13 @@ note_chord_dict = {
 
 
 # Convert a key to a note
-def to_note(input_key):
+def to_note(input_key: int):
     base_value = input_key % 12  # Convert key to base value for the note
     return key_note_dict.get(base_value, "invalid_key: {0}".format(input_key))
 
 
 # Convert active notes to a chord
-def to_chord(active_keys):
+def to_chord(active_keys: frozenset):
     base_values = frozenset({to_note(key) for key in active_keys})
     chord = ""
     try:
@@ -87,8 +87,7 @@ def signal_handler(sig, frame):
 
 
 # Activated by the thread. Appends/removes to active_notes list and then updates the GUI
-# Note param is a number here
-def update_active_notes(note_type, note, chord_label, notes_label, piano):
+def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
     active_note_mutex.acquire()
     try:
         if note_type == "note_on":
@@ -107,7 +106,7 @@ def update_active_notes(note_type, note, chord_label, notes_label, piano):
         active_note_mutex.release()
 
 
-def update_labels(chord_label, notes_label):
+def update_labels(chord_label: QLabel, notes_label: QLabel):
     chord = to_chord(frozenset(active_notes))
     if chord == "Invalid chord":
         chord_label.setFont(QFont('Times', 30))
@@ -118,7 +117,7 @@ def update_labels(chord_label, notes_label):
 
 
 # Thread function, the for loop triggers when a note is pressed.
-def input_monitor(chord_label, notes_label, piano):
+def input_monitor(chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
     logging.info("Starting input monitor...")
     try:
         with mido.open_input('MPK249 0') as input_port:
@@ -134,7 +133,6 @@ def input_monitor(chord_label, notes_label, piano):
         return
 
 
-
 if __name__ == "__main__":
     format = "%(asctime)s %(filename)s:%(lineno)d - %(message)s"
     logging.basicConfig(format=format, level=logging.INFO,
@@ -148,10 +146,13 @@ if __name__ == "__main__":
     piano = gui.Piano(win)
 
     # Note Monitor thread
+    logging.info("Inputs:")
     logging.info(mido.get_input_names())
+    logging.info("Outputs:")
     logging.info(mido.get_output_names())
     monitor_thread = threading.Thread(target=input_monitor, daemon=True, args=(win.chord_label, win.notes_label, piano,))
     monitor_thread.start()
 
+    # Exit
     sys.exit(app.exec_())
     logging.info("Done")
