@@ -43,7 +43,8 @@ class MidiReceiver(QObject):
         # Handle Sound
         if self.audio_manager.output:
             if note_type == "note_on" and velocity > 0:
-                self.audio_manager.output.note_on(note, velocity)
+                if not self.audio_manager.muted:
+                    self.audio_manager.output.note_on(note, velocity)
             elif note_type == "note_off" or (note_type == "note_on" and velocity == 0):
                 self.audio_manager.output.note_off(note, velocity)
 
@@ -86,6 +87,10 @@ def open_audio_settings(parent, audio_manager):
         name, dev_id = devices[index]
         audio_manager.set_device(name, dev_id)
 
+def toggle_mute(win, audio_manager):
+    audio_manager.muted = not audio_manager.muted
+    win.mute_btn.setText("🔇" if audio_manager.muted else "🔊")
+
 def signal_handler(sig, frame):
     print('Exiting...')
     sys.exit(0)
@@ -106,6 +111,7 @@ if __name__ == "__main__":
     win = gui.Window()
     piano = win.piano
     win.btn_audio.clicked.connect(lambda: open_audio_settings(win, audio_manager))
+    win.mute_btn.clicked.connect(lambda: toggle_mute(win, audio_manager))
     
     thread = QThread()
     worker = MidiWorker()

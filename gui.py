@@ -148,6 +148,13 @@ class Window(QWidget):
         self.hamburger.clicked.connect(self.toggle_menu)
         self.header_layout.addWidget(self.hamburger)
         self.header_layout.addStretch()
+
+        self.mute_btn = QPushButton("🔊")
+        self.mute_btn.setFixedSize(40, 40)
+        self.mute_btn.setCursor(Qt.PointingHandCursor)
+        self.mute_btn.setStyleSheet("QPushButton { color: #dfe6e9; font-size: 24px; background-color: transparent; border: none; } QPushButton:hover { color: #81ecec; }")
+        self.header_layout.addWidget(self.mute_btn)
+
         self.content_layout.addLayout(self.header_layout)
 
         # Create a display frame for a stylized look

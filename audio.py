@@ -62,6 +62,7 @@ class MidiOutputAdapter:
 
 class AudioManager:
     def __init__(self):
+        self.muted = False
         self.output = None
         try:
             pygame.init()
