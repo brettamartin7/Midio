@@ -5,6 +5,8 @@ import mido
 import threading
 import logging
 import time
+import pygame
+import pygame.midi
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
@@ -14,6 +16,7 @@ import gui
 global active_notes
 active_notes = []
 key_offset = 36
+midi_out = None
 
 # Dictionary mapping key_number
 key_note_dict = {
@@ -82,7 +85,19 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 # Activated by the thread. Appends/removes to active_notes list and then updates the GUI
-def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
+def update_active_notes(note_type: str, note: int, velocity: int, chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
+    # Handle Sound
+    if midi_out:
+        midi_note = note + key_offset
+        if note_type == "note_on" and velocity > 0:
+            midi_out.note_on(midi_note, velocity)
+        elif note_type == "note_off" or (note_type == "note_on" and velocity == 0):
+            midi_out.note_off(midi_note, velocity)
+
+    # Normalize note_on with velocity 0 to note_off for GUI logic
+    if note_type == "note_on" and velocity == 0:
+        note_type = "note_off"
+
     try:
         if note_type == "note_on":
             if note not in active_notes:
@@ -100,14 +115,14 @@ def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_la
 def update_labels(chord_label: QLabel, notes_label: QLabel):
     chord = to_chord(frozenset(active_notes))
     if chord == "Invalid chord":
-        chord_label.setFont(QFont('Times', 30))
+        chord_label.setFont(QFont('Arial', 30))
     else:
-        chord_label.setFont(QFont('Times', 100))
+        chord_label.setFont(QFont('Arial', 100, QFont.Bold))
     chord_label.setText(chord)
     notes_label.setText(''.join(to_note(key) + ' ' for key in set(active_notes)))
 
 class MidiWorker(QObject):
-    note_event = pyqtSignal(str, int)
+    note_event = pyqtSignal(str, int, int)
 
     def run(self):
         logging.info("Starting input monitor...")
@@ -117,7 +132,8 @@ class MidiWorker(QObject):
                     for msg in input_port:
                         try:
                             if hasattr(msg, 'note'):
-                                self.note_event.emit(msg.type, msg.note)
+                                velocity = msg.velocity if hasattr(msg, 'velocity') else 0
+                                self.note_event.emit(msg.type, msg.note, velocity)
                         except Exception as e:
                             logging.warning(e)
                             print(msg)
@@ -131,9 +147,58 @@ class MidiReceiver(QObject):
         self.notes_label = notes_label
         self.piano = piano
 
-    @pyqtSlot(str, int)
-    def on_note_event(self, note_type, note):
-        update_active_notes(note_type, note - key_offset, self.chord_label, self.notes_label, self.piano)
+    @pyqtSlot(str, int, int)
+    def on_note_event(self, note_type, note, velocity):
+        update_active_notes(note_type, note - key_offset, velocity, self.chord_label, self.notes_label, self.piano)
+
+def get_midi_output_devices():
+    devices = []
+    count = pygame.midi.get_count()
+    for i in range(count):
+        try:
+            info = pygame.midi.get_device_info(i)
+            if info and info[3] == 1:  # is_output
+                name = info[1]
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8')
+                devices.append((i, name))
+        except Exception as e:
+            logging.warning(f"Error getting device info for {i}: {e}")
+    return devices
+
+def set_midi_output_device(device_id):
+    global midi_out
+    try:
+        if midi_out:
+            midi_out.close()
+            midi_out = None
+        
+        midi_out = pygame.midi.Output(device_id)
+        midi_out.set_instrument(0)
+        logging.info(f"Audio output set to device ID: {device_id}")
+        
+        # Play test note
+        midi_out.note_on(60, 127)
+        time.sleep(0.2)
+        midi_out.note_off(60, 127)
+    except Exception as e:
+        logging.error(f"Failed to set MIDI output: {e}")
+
+def open_audio_settings(parent):
+    devices = get_midi_output_devices()
+    options = ["OS Default"] + [f"{name} (ID: {i})" for i, name in devices]
+    item, ok = QInputDialog.getItem(parent, "Audio Settings", "Select Output Device:", options, 0, False)
+    if ok and item:
+        if item == "OS Default":
+            port = pygame.midi.get_default_output_id()
+            if port != -1:
+                set_midi_output_device(port)
+            else:
+                QMessageBox.warning(parent, "Error", "No default MIDI device found.")
+        else:
+            index = options.index(item) - 1
+            if 0 <= index < len(devices):
+                set_midi_output_device(devices[index][0])
 
 if __name__ == "__main__":
     format = "%(asctime)s %(filename)s:%(lineno)d - %(message)s"
@@ -142,10 +207,42 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    # Initialize Audio
+    try:
+        pygame.init()
+        pygame.midi.init()
+
+        # List all available MIDI devices to help debug
+        logging.info("Available MIDI Devices:")
+        for i in range(pygame.midi.get_count()):
+            r = pygame.midi.get_device_info(i)
+            (interf, name, is_input, is_output, opened) = r
+            direction = []
+            if is_input: direction.append("Input")
+            if is_output: direction.append("Output")
+            logging.info(f"Device {i}: {name.decode('utf-8') if isinstance(name, bytes) else name} - {', '.join(direction)}")
+
+        port = pygame.midi.get_default_output_id()
+        if port != -1:
+            logging.info(f"Attempting to use default MIDI output device ID: {port}")
+            midi_out = pygame.midi.Output(port, 0)
+            midi_out.set_instrument(0)
+            logging.info("Audio initialized successfully.")
+            
+            # Play a test note (Middle C) to confirm audio is working
+            midi_out.note_on(60, 127)
+            time.sleep(0.5)
+            midi_out.note_off(60, 127)
+        else:
+            logging.warning("No default MIDI output found.")
+    except Exception as e:
+        logging.warning(f"Audio initialization failed: {e}. Ensure 'pygame' is installed.")
+
     # GUI
     app = gui.QApplication(sys.argv)
     win = gui.Window()
-    piano = gui.Piano(win)
+    piano = win.piano
+    win.btn_audio.clicked.connect(lambda: open_audio_settings(win))
 
     # Note Monitor thread
     logging.info("Inputs:")
