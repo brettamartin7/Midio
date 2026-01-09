@@ -14,7 +14,6 @@ import gui
 global active_notes
 active_notes = []
 key_offset = 36
-active_note_mutex = threading.Lock()
 
 # Dictionary mapping key_number
 key_note_dict = {
@@ -84,22 +83,19 @@ def signal_handler(sig, frame):
 
 # Activated by the thread. Appends/removes to active_notes list and then updates the GUI
 def update_active_notes(note_type: str, note: int, chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
-    active_note_mutex.acquire()
     try:
         if note_type == "note_on":
             if note not in active_notes:
                 active_notes.append(note)
-                piano.activate_button(to_note(note))
+                piano.activate_button(note)
         elif note_type == "note_off":
             if note in active_notes:
                 active_notes.remove(note)
-                piano.deactivate_button(to_note(note))
+                piano.deactivate_button(note)
     except Exception as e:
-        logging.error("Encountered an error in update_active_notes: " + e)
+        logging.error("Encountered an error in update_active_notes: " + str(e))
 
-    finally:
-        update_labels(chord_label, notes_label)
-        active_note_mutex.release()
+    update_labels(chord_label, notes_label)
 
 def update_labels(chord_label: QLabel, notes_label: QLabel):
     chord = to_chord(frozenset(active_notes))
@@ -110,21 +106,34 @@ def update_labels(chord_label: QLabel, notes_label: QLabel):
     chord_label.setText(chord)
     notes_label.setText(''.join(to_note(key) + ' ' for key in set(active_notes)))
 
-# Thread function, the for loop triggers when a note is pressed.
-def input_monitor(chord_label: QLabel, notes_label: QLabel, piano: gui.Piano):
-    logging.info("Starting input monitor...")
-    try:
-        with mido.open_input('MPK249 Port A') as input_port:
-            while True:
-                for msg in input_port:
-                    try:
-                        update_active_notes(msg.type, msg.note - key_offset, chord_label, notes_label, piano)  # Makes the first key 0
-                    except Exception as e:
-                        logging.warning(e)
-                        print(msg)
-    except OSError as oh_no:
-        logging.error(oh_no)
-        return
+class MidiWorker(QObject):
+    note_event = pyqtSignal(str, int)
+
+    def run(self):
+        logging.info("Starting input monitor...")
+        try:
+            with mido.open_input('MPK249 Port A') as input_port:
+                while True:
+                    for msg in input_port:
+                        try:
+                            if hasattr(msg, 'note'):
+                                self.note_event.emit(msg.type, msg.note)
+                        except Exception as e:
+                            logging.warning(e)
+                            print(msg)
+        except OSError as oh_no:
+            logging.error(oh_no)
+
+class MidiReceiver(QObject):
+    def __init__(self, chord_label, notes_label, piano):
+        super().__init__()
+        self.chord_label = chord_label
+        self.notes_label = notes_label
+        self.piano = piano
+
+    @pyqtSlot(str, int)
+    def on_note_event(self, note_type, note):
+        update_active_notes(note_type, note - key_offset, self.chord_label, self.notes_label, self.piano)
 
 if __name__ == "__main__":
     format = "%(asctime)s %(filename)s:%(lineno)d - %(message)s"
@@ -143,8 +152,15 @@ if __name__ == "__main__":
     logging.info(mido.get_input_names())
     logging.info("Outputs:")
     logging.info(mido.get_output_names())
-    monitor_thread = threading.Thread(target=input_monitor, daemon=True, args=(win.chord_label, win.notes_label, piano,))
-    monitor_thread.start()
+    
+    thread = QThread()
+    worker = MidiWorker()
+    receiver = MidiReceiver(win.chord_label, win.notes_label, piano)
+    
+    worker.moveToThread(thread)
+    worker.note_event.connect(receiver.on_note_event)
+    thread.started.connect(worker.run)
+    thread.start()
 
     # Exit
     sys.exit(app.exec_())
