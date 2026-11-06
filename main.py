@@ -10,13 +10,24 @@ import gui
 import theory
 import audio
 
+# MidiWorker is responsible for handling MIDI Input
 class MidiWorker(QObject):
+    
     note_event = pyqtSignal(str, int, int)
+    
+    def __init__(self):
+        super().__init__()
+        self.midi_input_name="MPK249 Port A"
 
+
+    def set_midi_input(self, input_name):
+        self.midi_input_name = input_name
+
+    # Responsible for continously monitoring MIDI input
     def run(self):
-        logging.info("Starting input monitor...")
+        logging.info(f"Starting input monitor for device {self.midi_input_name}")
         try:
-            with mido.open_input('MPK249 Port A') as input_port:
+            with mido.open_input(self.midi_input_name) as input_port:
                 while True:
                     for msg in input_port:
                         try:
@@ -79,13 +90,21 @@ class MidiReceiver(QObject):
         self.notes_label.setText(''.join(theory.to_note(key) + ' ' for key in set(self.active_notes)))
 
 def open_audio_settings(parent, audio_manager):
-    devices = audio_manager.get_devices()
+    devices = audio_manager.get_speakers()
     options = [name for name, _ in devices]
     item, ok = QInputDialog.getItem(parent, "Audio Settings", "Select Output Device:", options, 0, False)
     if ok and item:
         index = options.index(item)
         name, dev_id = devices[index]
         audio_manager.set_device(name, dev_id)
+
+def select_midi_input(parent):
+    options = mido.get_input_names()
+    item, ok = QInputDialog.getItem(parent, "MIDI Input", "Select MIDI Input:", options, 0, False)
+    if ok and item:
+        name = options.index(item)
+        logging.info(f"MIDI Input selected: {name}")
+    
 
 def toggle_mute(win, audio_manager):
     audio_manager.muted = not audio_manager.muted
@@ -112,6 +131,7 @@ if __name__ == "__main__":
     piano = win.piano
     win.btn_audio.clicked.connect(lambda: open_audio_settings(win, audio_manager))
     win.mute_btn.clicked.connect(lambda: toggle_mute(win, audio_manager))
+    win.btn_midi.clicked.connect(lambda: select_midi_input(win))
     
     thread = QThread()
     worker = MidiWorker()

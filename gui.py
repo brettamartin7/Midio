@@ -118,7 +118,7 @@ class Window(QWidget):
         self.btn_modes.setStyleSheet(menu_btn_style)
         self.side_menu_layout.addWidget(self.btn_modes)
 
-        self.btn_midi = QPushButton("MIDI Keyboard")
+        self.btn_midi = QPushButton("MIDI Input Device")
         self.btn_midi.setStyleSheet(menu_btn_style)
         self.side_menu_layout.addWidget(self.btn_midi)
 

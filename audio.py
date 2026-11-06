@@ -72,7 +72,7 @@ class AudioManager:
         except Exception as e:
             logging.warning(f"Audio initialization failed: {e}")
 
-    def get_devices(self):
+    def get_speakers(self):
         devices = [("Internal Speakers (Synth)", -1)]
         count = pygame.midi.get_count()
         for i in range(count):
