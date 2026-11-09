@@ -199,6 +199,21 @@ class Window(QWidget):
     def setNote(self, input_note):
         self.chord_label.setText(input_note)
 
+    def update_note_display(self, active_notes, note_text, chord):
+        active_notes = set(active_notes)
+        for key in self.piano.keys:
+            if key in active_notes:
+                self.piano.activate_button(key)
+            else:
+                self.piano.deactivate_button(key)
+
+        if chord == "Invalid chord":
+            self.chord_label.setFont(QFont('Arial', 30))
+        else:
+            self.chord_label.setFont(QFont('Arial', 100, QFont.Bold))
+        self.chord_label.setText(chord)
+        self.notes_label.setText(note_text)
+
     def select_octaves(self):
         num, ok = QInputDialog.getInt(self, "Octaves Shown", "Select number of octaves (1-6):", 4, 1, 6, 1)
         if ok:
