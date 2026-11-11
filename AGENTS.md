@@ -2,7 +2,9 @@
 
 ## Project overview
 
-Midio is a Python desktop application that monitors MIDI note input, plays notes through an internal synthesizer or MIDI output, and displays active notes and recognized chords in a PyQt GUI.
+Midio is a Python desktop application that monitors MIDI note input, plays notes through an internal synthesizer or MIDI output, and displays active notes and recognized chords in a PyQt GUI. It's primary purpose is to provide a lightweight
+environment to play a MIDI keyboard, and teach the user how to play the piano. This is a personal project, not released
+to anyone else.
 
 ## Repository map
 
