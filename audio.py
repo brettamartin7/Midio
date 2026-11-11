@@ -100,3 +100,28 @@ class AudioManager:
         self.output.note_on(60, 127)
         time.sleep(0.2)
         self.output.note_off(60, 127)
+
+    def close(self):
+        """Release audio and MIDI resources during application shutdown."""
+        if self.output:
+            try:
+                self.output.close()
+            except Exception:
+                logging.exception("Error closing audio output")
+            finally:
+                self.output = None
+
+        try:
+            if pygame.mixer.get_init():
+                pygame.mixer.stop()
+                pygame.mixer.quit()
+        except pygame.error:
+            logging.exception("Error shutting down audio mixer")
+
+        try:
+            if pygame.midi.get_init():
+                pygame.midi.quit()
+        except pygame.error:
+            logging.exception("Error shutting down MIDI output")
+
+        pygame.quit()

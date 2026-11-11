@@ -70,10 +70,20 @@ def main():
     worker.moveToThread(thread)
     worker.note_event.connect(controller.on_note_event)
     controller.notes_changed.connect(window.update_note_display)
-    thread.started.connect(worker.run)
+    worker.finished.connect(thread.quit)
+    thread.started.connect(worker.start_monitor)
     thread.start()
 
-    return app.exec_()
+    try:
+        return app.exec_()
+    finally:
+        if thread.isRunning():
+            worker.stop_requested.emit()
+            if not thread.wait(5000):
+                logging.warning("MIDI worker did not stop promptly; waiting for shutdown")
+                thread.quit()
+                thread.wait()
+        audio_manager.close()
 
 
 if __name__ == "__main__":
