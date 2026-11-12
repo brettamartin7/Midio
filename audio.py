@@ -81,8 +81,89 @@ class BellSoundStrategy(HarmonicSoundStrategy):
         return pygame.sndarray.make_sound(np.column_stack((samples, samples)))
 
 
+class GrandPianoSoundStrategy(SoundStrategy):
+    """Approximate piano strings with stretched, detuned partials and a hammer transient."""
+
+    def render(self, note, preset, sample_rate, duration):
+        frequency = 440.0 * (2.0 ** ((note - 69.0) / 12.0))
+        sample_count = int(sample_rate * duration)
+        t = np.arange(sample_count, dtype=np.float32) / sample_rate
+        left = np.zeros(sample_count, dtype=np.float32)
+        right = np.zeros(sample_count, dtype=np.float32)
+
+        # Higher piano strings are stiffer, so their partials sit slightly sharp
+        # of exact integer multiples. The effect naturally grows in the high range.
+        stiffness = min(0.00025 + (frequency / 6000.0) ** 2 * 0.003, 0.012)
+        for harmonic, amplitude in preset.partials:
+            stretched_ratio = harmonic * np.sqrt(1.0 + stiffness * harmonic ** 2)
+            partial_decay = max(preset.decay / (harmonic ** 0.72), 0.12)
+            envelope = np.exp(-t / partial_decay)
+
+            # Two slightly detuned strings create the gentle beating of a piano.
+            detune = 0.0012
+            left += amplitude * np.sin(
+                2 * np.pi * frequency * stretched_ratio * (1.0 - detune) * t
+            ) * envelope
+            right += amplitude * np.sin(
+                2 * np.pi * frequency * stretched_ratio * (1.0 + detune) * t
+            ) * envelope
+
+        attack = max(preset.attack, 0.001)
+        attack_envelope = np.minimum(t / attack, 1.0)
+        left *= attack_envelope
+        right *= attack_envelope
+
+        # A short, quiet broadband transient suggests the hammer striking the strings.
+        rng = np.random.default_rng(note)
+        hammer = rng.standard_normal(sample_count).astype(np.float32)
+        hammer *= 0.018 * np.exp(-t / 0.0035)
+        left += hammer
+        right += hammer
+
+        peak = max(np.max(np.abs(left)), np.max(np.abs(right)))
+        if peak:
+            left /= peak
+            right /= peak
+        stereo = np.column_stack((left, right))
+        return pygame.sndarray.make_sound((stereo * 32767).astype(np.int16))
+
+
+class SynthwaveSoundStrategy(HarmonicSoundStrategy):
+    """Render a wide, detuned saw-like lead for synthwave sounds."""
+
+    def render(self, note, preset, sample_rate, duration):
+        frequency = 440.0 * (2.0 ** ((note - 69.0) / 12.0))
+        sample_count = int(sample_rate * duration)
+        t = np.arange(sample_count, dtype=np.float32) / sample_rate
+        left = np.zeros(sample_count, dtype=np.float32)
+        right = np.zeros(sample_count, dtype=np.float32)
+
+        for ratio, amplitude in preset.partials:
+            left += amplitude * np.sin(2 * np.pi * frequency * 0.996 * ratio * t)
+            right += amplitude * np.sin(2 * np.pi * frequency * 1.004 * ratio * t)
+
+        attack = max(preset.attack, 0.001)
+        decay = max(preset.decay, 0.001)
+        attack_env = np.minimum(t / attack, 1.0)
+        decay_env = preset.sustain + (1.0 - preset.sustain) * np.exp(
+            -np.maximum(t - attack, 0.0) / decay
+        )
+        envelope = np.where(t < attack, attack_env, decay_env)
+        left *= envelope
+        right *= envelope
+
+        peak = max(np.max(np.abs(left)), np.max(np.abs(right)))
+        if peak:
+            left /= peak
+            right /= peak
+        stereo = np.column_stack((left, right))
+        return pygame.sndarray.make_sound((stereo * 32767).astype(np.int16))
+
+
 HARMONIC_STRATEGY = HarmonicSoundStrategy()
 BELL_STRATEGY = BellSoundStrategy()
+SYNTHWAVE_STRATEGY = SynthwaveSoundStrategy()
+GRAND_PIANO_STRATEGY = GrandPianoSoundStrategy()
 
 PRESETS = {
     "retro_pluck": SynthPreset(
@@ -93,6 +174,12 @@ PRESETS = {
         "warm_keys", "Warm Keys", ((1, 1.0), (2, 0.24), (3, 0.08)),
         0.012, 0.8, 0.24, 280, 0, HARMONIC_STRATEGY, True,
     ),
+    "grand_piano": SynthPreset(
+        "grand_piano", "Grand Piano",
+        ((1, 1.0), (2, 0.58), (3, 0.36), (4, 0.24), (5, 0.16),
+         (6, 0.11), (7, 0.075), (8, 0.052)),
+        0.004, 2.2, 0.0, 300, 0, GRAND_PIANO_STRATEGY,
+    ),
     "glass_bell": SynthPreset(
         "glass_bell", "Glass Bell", ((1, 1.0), (2.71, 0.38), (5.4, 0.14)),
         0.002, 1.7, 0.0, 500, 10, BELL_STRATEGY,
@@ -100,6 +187,12 @@ PRESETS = {
     "dream_pad": SynthPreset(
         "dream_pad", "Dream Pad", ((1, 1.0), (2, 0.2), (3, 0.07)),
         0.65, 1.0, 0.66, 900, 89, HARMONIC_STRATEGY, True,
+    ),
+    "heavy_synthwave": SynthPreset(
+        "heavy_synthwave", "Heavy Synthwave",
+        ((1, 1.0), (2, 0.62), (3, 0.43), (4, 0.31), (5, 0.24),
+         (6, 0.19), (7, 0.15), (8, 0.12)),
+        0.018, 0.7, 0.72, 550, 81, SYNTHWAVE_STRATEGY, True,
     ),
 }
 

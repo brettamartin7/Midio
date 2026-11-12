@@ -47,6 +47,17 @@ QPushButton#white_key:disabled {
 }
 """
 
+WHITE_KEY_LABEL_STYLE = """
+QLabel {
+    color: rgba(61, 53, 96, 155);
+    background: transparent;
+    border: none;
+    font-family: Arial;
+    font-size: 10px;
+    font-weight: bold;
+}
+"""
+
 
 class Piano(QWidget):
     def __init__(self, main_window):
@@ -64,6 +75,7 @@ class Piano(QWidget):
         white_key_x = 20
         num_keys = num_octaves * 12
         black_notes = [1, 3, 6, 8, 10]
+        white_note_names = {0: "C", 2: "D", 4: "E", 5: "F", 7: "G", 9: "A", 11: "B"}
 
         for i in range(num_keys):
             if (i % 12) in black_notes:
@@ -76,6 +88,12 @@ class Piano(QWidget):
                 btn.setGeometry(QRect(white_key_x, 35, 41, 181))
                 btn.setStyleSheet(WHITE_KEY_STYLE)
                 btn.setObjectName("white_key")
+                note_label = QLabel(white_note_names[i % 12], btn)
+                note_label.setAlignment(Qt.AlignCenter)
+                note_label.setGeometry(0, 148, 41, 22)
+                note_label.setStyleSheet(WHITE_KEY_LABEL_STYLE)
+                note_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+                note_label.show()
                 white_key_x += 40
             btn.setCursor(Qt.PointingHandCursor)
             self.keys[i] = btn
