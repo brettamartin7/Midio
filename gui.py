@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 import logging
 
+from chords import MAJOR_CHORDS
+
 
 APP_STYLE = """
 QWidget#Window { background-color: #090b1d; color: #f3f1ff; }
@@ -58,12 +60,31 @@ QLabel {
 }
 """
 
+WHITE_KEY_SUGGESTED_STYLE = """
+QPushButton#white_key {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #ffe4fb, stop:1 #d779dc);
+    border: 1px solid #ff9be7; border-bottom: 5px solid #ad54ba;
+    border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;
+}
+"""
+
+BLACK_KEY_SUGGESTED_STYLE = """
+QPushButton#black_key {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #cb55d7, stop:1 #78248e);
+    border: 1px solid #ff9be7; border-top: 2px solid #ffc2f0;
+    border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
+}
+"""
+
 
 class Piano(QWidget):
     def __init__(self, main_window):
         super().__init__(main_window)
         self.setObjectName("PianoWidget")
         self.keys = {}
+        self.note_labels = {}
+        self.active_notes = set()
+        self.target_notes = set()
         self.draw_keys(4)
         main_window.layout.addWidget(self, 0, Qt.AlignHCenter)
 
@@ -71,6 +92,7 @@ class Piano(QWidget):
         for key in self.keys.values():
             key.deleteLater()
         self.keys = {}
+        self.note_labels = {}
 
         white_key_x = 20
         num_keys = num_octaves * 12
@@ -94,6 +116,7 @@ class Piano(QWidget):
                 note_label.setStyleSheet(WHITE_KEY_LABEL_STYLE)
                 note_label.setAttribute(Qt.WA_TransparentForMouseEvents)
                 note_label.show()
+                self.note_labels[i] = note_label
                 white_key_x += 40
             btn.setCursor(Qt.PointingHandCursor)
             self.keys[i] = btn
@@ -104,20 +127,46 @@ class Piano(QWidget):
                 self.keys[i].raise_()
 
         self.setFixedSize(white_key_x + 20, 245)
+        self._refresh_keys()
+
+    def set_active_notes(self, notes):
+        self.active_notes = set(notes)
+        self._refresh_keys()
+
+    def set_target_notes(self, notes):
+        self.target_notes = set(notes)
+        self._refresh_keys()
+
+    def _refresh_keys(self):
+        for note, key in self.keys.items():
+            is_black = note % 12 in (1, 3, 6, 8, 10)
+            if note in self.active_notes:
+                style = BLACK_KEY_STYLE if is_black else WHITE_KEY_STYLE
+                key.setStyleSheet(style)
+                key.setDisabled(True)
+            else:
+                key.setDisabled(False)
+                if note in self.target_notes:
+                    style = BLACK_KEY_SUGGESTED_STYLE if is_black else WHITE_KEY_SUGGESTED_STYLE
+                else:
+                    style = BLACK_KEY_STYLE if is_black else WHITE_KEY_STYLE
+                key.setStyleSheet(style)
+
+            label = self.note_labels.get(note)
+            if label:
+                label.setStyleSheet(
+                    "QLabel{color:rgba(255,245,255,220);background:transparent;border:none;font-family:Arial;font-size:10px;font-weight:bold;}"
+                    if note in self.target_notes or note in self.active_notes
+                    else WHITE_KEY_LABEL_STYLE
+                )
 
     def activate_button(self, note):
-        try:
-            if note in self.keys:
-                self.keys[note].setDisabled(True)
-        except Exception as e:
-            logging.warning(e)
+        self.active_notes.add(note)
+        self._refresh_keys()
 
     def deactivate_button(self, note):
-        try:
-            if note in self.keys:
-                self.keys[note].setDisabled(False)
-        except Exception as e:
-            logging.warning(e)
+        self.active_notes.discard(note)
+        self._refresh_keys()
 
 
 class Window(QWidget):
@@ -127,6 +176,10 @@ class Window(QWidget):
         QWidget.__init__(self, *args, **kwargs)
         self.setObjectName("Window")
         self.setStyleSheet(APP_STYLE)
+        self.selected_chord = None
+        self.current_active_notes = set()
+        self.current_note_text = ""
+        self.current_chord = "Invalid chord"
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
@@ -221,10 +274,10 @@ class Window(QWidget):
         self.display_layout.setContentsMargins(28, 25, 28, 25)
         self.display_layout.setSpacing(7)
 
-        display_kicker = QLabel("NOW PLAYING")
-        display_kicker.setAlignment(Qt.AlignCenter)
-        display_kicker.setStyleSheet("color:#ff75d8;font-size:10px;font-weight:bold;letter-spacing:3px;border:none;")
-        self.display_layout.addWidget(display_kicker)
+        self.display_kicker = QLabel("NOW PLAYING")
+        self.display_kicker.setAlignment(Qt.AlignCenter)
+        self.display_kicker.setStyleSheet("color:#ff75d8;font-size:10px;font-weight:bold;letter-spacing:3px;border:none;")
+        self.display_layout.addWidget(self.display_kicker)
 
         self.chord_label = QLabel("Ready")
         self.chord_label.setFont(QFont("Arial", 72, QFont.Bold))
@@ -235,11 +288,69 @@ class Window(QWidget):
         self.notes_label.setFont(QFont("Arial", 15))
         self.notes_label.setAlignment(Qt.AlignCenter)
         self.notes_label.setStyleSheet("color:#9b91c5;border:none;letter-spacing:2px;")
+        self.live_chord_label = QLabel("")
+        self.live_chord_label.setAlignment(Qt.AlignCenter)
+        self.live_chord_label.setStyleSheet("color:#80f6ff;border:none;font-size:10px;font-weight:bold;letter-spacing:2px;")
         self.display_layout.addStretch(1)
         self.display_layout.addWidget(self.chord_label)
         self.display_layout.addWidget(self.notes_label)
+        self.display_layout.addWidget(self.live_chord_label)
         self.display_layout.addStretch(1)
-        self.content_layout.addWidget(self.display_frame, 1)
+
+        activity_layout = QHBoxLayout()
+        activity_layout.setSpacing(16)
+        activity_layout.addWidget(self.display_frame, 1)
+
+        self.chord_library_frame = QFrame(self.content_widget)
+        self.chord_library_frame.setObjectName("ChordLibrary")
+        self.chord_library_frame.setFixedWidth(258)
+        self.chord_library_frame.setMinimumHeight(300)
+        self.chord_library_frame.setStyleSheet("QFrame#ChordLibrary{background:#11132d;border:1px solid #39315f;border-radius:18px;}")
+        library_layout = QVBoxLayout(self.chord_library_frame)
+        library_layout.setContentsMargins(16, 16, 16, 16)
+        library_layout.setSpacing(9)
+
+        library_header = QHBoxLayout()
+        library_title = QLabel("CHORD LIBRARY")
+        library_title.setStyleSheet("color:#ff75d8;font-size:10px;font-weight:bold;letter-spacing:2px;border:none;")
+        self.clear_chord_button = QToolButton()
+        self.clear_chord_button.setText("CLEAR")
+        self.clear_chord_button.setCursor(Qt.PointingHandCursor)
+        self.clear_chord_button.setStyleSheet("QToolButton{color:#817ba7;background:transparent;border:none;font-size:9px;font-weight:bold;letter-spacing:1px;} QToolButton:hover{color:#80f6ff;}")
+        self.clear_chord_button.clicked.connect(self.clear_chord_selection)
+        library_header.addWidget(library_title)
+        library_header.addStretch()
+        library_header.addWidget(self.clear_chord_button)
+        library_layout.addLayout(library_header)
+
+        library_subtitle = QLabel("MAJOR TRIADS")
+        library_subtitle.setStyleSheet("color:#625d83;font-size:9px;font-weight:bold;letter-spacing:2px;border:none;")
+        library_layout.addWidget(library_subtitle)
+
+        chord_grid = QGridLayout()
+        chord_grid.setHorizontalSpacing(7)
+        chord_grid.setVerticalSpacing(7)
+        chord_button_style = "QPushButton{color:#c9c2e5;background:#191a39;border:1px solid #37315e;border-radius:8px;font-size:12px;font-weight:bold;padding:8px 2px;} QPushButton:hover{color:#fff;background:#262047;border-color:#8172be;} QPushButton:checked{color:#fff;background:#55275f;border:1px solid #ff75d8;}"
+        self.chord_button_group = QButtonGroup(self)
+        self.chord_button_group.setExclusive(True)
+        self.chord_buttons = {}
+        for index, chord_definition in enumerate(MAJOR_CHORDS):
+            button = QPushButton(chord_definition.root)
+            button.setCheckable(True)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setToolTip(chord_definition.name)
+            button.setAccessibleName(chord_definition.name)
+            button.setStyleSheet(chord_button_style)
+            self.chord_button_group.addButton(button)
+            self.chord_buttons[chord_definition.key] = button
+            button.clicked.connect(
+                lambda checked=False, chord=chord_definition: self.select_chord(chord)
+            )
+            chord_grid.addWidget(button, index // 3, index % 3)
+        library_layout.addLayout(chord_grid)
+        library_layout.addStretch()
+        activity_layout.addWidget(self.chord_library_frame)
+        self.content_layout.addLayout(activity_layout, 1)
 
         self.main_layout.addWidget(self.content_widget)
         self.layout = self.content_layout
@@ -324,24 +435,80 @@ class Window(QWidget):
         return QIcon(pixmap)
 
     def update_note_display(self, active_notes, note_text, chord):
-        active_notes = set(active_notes)
-        for key in self.piano.keys:
-            if key in active_notes:
-                self.piano.activate_button(key)
-            else:
-                self.piano.deactivate_button(key)
+        self.current_active_notes = set(active_notes)
+        self.current_note_text = note_text
+        self.current_chord = chord
+        self._refresh_chord_display()
 
-        if chord == "Invalid chord":
+    def select_chord(self, chord_definition):
+        if (
+            self.selected_chord
+            and self.selected_chord.key == chord_definition.key
+        ):
+            self.clear_chord_selection()
+            return
+
+        self.selected_chord = chord_definition
+        self.piano.set_target_notes(
+            chord_definition.voicing_indices(len(self.piano.keys))
+        )
+        self._refresh_chord_display()
+
+    def clear_chord_selection(self):
+        self.selected_chord = None
+        self.chord_button_group.setExclusive(False)
+        for button in self.chord_buttons.values():
+            button.setChecked(False)
+        self.chord_button_group.setExclusive(True)
+        self.piano.set_target_notes(())
+        self._refresh_chord_display()
+
+    def _refresh_chord_display(self):
+        self.piano.set_active_notes(self.current_active_notes)
+        if self.selected_chord:
+            chord = self.selected_chord
+            self.display_kicker.setText("CHORD TARGET")
+            self.chord_label.setFont(QFont("Arial", 72, QFont.Bold))
+            self.chord_label.setStyleSheet("color:#f4eaff;border:none;")
+            self.chord_label.setText(chord.name)
+            self.notes_label.setStyleSheet("color:#ffb8ec;border:none;letter-spacing:2px;")
+            self.notes_label.setText("NOTES TO PLAY  ·  " + "  ·  ".join(chord.note_names))
+
+            active_pitch_classes = {note % 12 for note in self.current_active_notes}
+            if chord.pitch_classes.issubset(active_pitch_classes):
+                status = "CHORD COMPLETE"
+            elif self.current_active_notes:
+                heard = self.current_chord
+                if heard == "Invalid chord":
+                    heard = self.current_note_text.upper()
+                status = f"PLAYING  ·  {heard}"
+            else:
+                status = "FOLLOW THE HIGHLIGHTED KEYS"
+            self.live_chord_label.setText(status)
+            return
+
+        self.display_kicker.setText("NOW PLAYING")
+        self.live_chord_label.clear()
+        if self.current_chord == "Invalid chord":
             self.chord_label.setFont(QFont("Arial", 30, QFont.Bold))
             self.chord_label.setStyleSheet("color:#ff75a8;border:none;")
         else:
             self.chord_label.setFont(QFont("Arial", 72, QFont.Bold))
             self.chord_label.setStyleSheet("color:#f4eaff;border:none;")
-        self.chord_label.setText(chord)
-        self.notes_label.setText(note_text.upper() if note_text else "PLAY A CHORD TO BEGIN")
+        self.chord_label.setText(self.current_chord)
+        self.notes_label.setStyleSheet("color:#9b91c5;border:none;letter-spacing:2px;")
+        self.notes_label.setText(
+            self.current_note_text.upper()
+            if self.current_note_text
+            else "PLAY A CHORD TO BEGIN"
+        )
 
     def select_octaves(self, value):
         self.piano.draw_keys(int(value))
+        if self.selected_chord:
+            self.piano.set_target_notes(
+                self.selected_chord.voicing_indices(len(self.piano.keys))
+            )
 
     def open_settings(self):
         self.settings_dialog.exec_()
