@@ -8,7 +8,6 @@ import logging
 
 APP_STYLE = """
 QWidget#Window { background-color: #090b1d; color: #f3f1ff; }
-QFrame#SideMenu { background-color: #10122b; border-right: 1px solid #29244d; }
 QWidget#Content { background-color: transparent; }
 QLabel { background: transparent; }
 QPushButton { font-family: 'Arial'; }
@@ -21,6 +20,7 @@ QMenu { background-color:#11132d; color:#e9e5ff; border:1px solid #484274; paddi
 QMenu::item { padding:8px 24px 8px 10px; border-radius:5px; }
 QMenu::item:selected { background-color:#29234c; color:#ffffff; }
 QMenu::item:checked { color:#80f6ff; }
+QDialog { background-color:#10122b; color:#f3f1ff; }
 """
 
 BLACK_KEY_STYLE = """
@@ -128,43 +128,30 @@ class Window(QWidget):
         self.setObjectName("Window")
         self.setStyleSheet(APP_STYLE)
 
-        self.main_layout = QHBoxLayout(self)
+        self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        self.side_menu = QFrame(self)
-        self.side_menu.setObjectName("SideMenu")
-        self.side_menu.setFixedWidth(0)
-        self.side_menu_layout = QVBoxLayout(self.side_menu)
-        self.side_menu_layout.setContentsMargins(14, 24, 14, 24)
-        self.side_menu_layout.setSpacing(8)
-        self.side_menu_layout.setAlignment(Qt.AlignTop)
-
-        menu_title = QLabel("STUDIO SETTINGS")
-        menu_title.setStyleSheet("color:#8d83ba; font-size:10px; font-weight:bold; letter-spacing:2px; padding:0 10px 10px;")
-        self.side_menu_layout.addWidget(menu_title)
-        menu_btn_style = """
-        QPushButton { color:#d9d5f3; background:transparent; text-align:left; padding:12px 10px;
-            font-size:13px; border:1px solid transparent; border-radius:8px; }
-        QPushButton:hover { color:#fff; background:#211d42; border-color:#443969; }
-        """
-        self.btn_presets = QToolButton()
-        self.btn_presets.setText("Audio Presets")
-        self.btn_presets.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.btn_presets.setArrowType(Qt.DownArrow)
-        self.btn_presets.setPopupMode(QToolButton.InstantPopup)
-        self.btn_presets.setStyleSheet("QToolButton { color:#d9d5f3; background:transparent; text-align:left; padding:12px 10px; font-size:13px; border:1px solid transparent; border-radius:8px; } QToolButton:hover { color:#fff; background:#211d42; border-color:#443969; } QToolButton::menu-indicator { image:none; }")
-        self.preset_menu = QMenu(self.btn_presets)
-        self.btn_presets.setMenu(self.preset_menu)
+        self.settings_dialog = QDialog(self)
+        self.settings_dialog.setWindowTitle("Studio Settings")
+        self.settings_dialog.setFixedWidth(340)
+        settings_layout = QVBoxLayout(self.settings_dialog)
+        settings_layout.setContentsMargins(24, 22, 24, 20)
+        settings_layout.setSpacing(12)
+        settings_title = QLabel("DEVICE ROUTING")
+        settings_title.setStyleSheet("color:#ff75d8;font-size:10px;font-weight:bold;letter-spacing:2px;")
+        settings_layout.addWidget(settings_title)
         self.btn_midi = QPushButton("MIDI Input Device")
-        self.btn_audio = QPushButton("Audio Settings")
-        self.btn_octaves = QPushButton("Octaves Shown")
-        self.side_menu_layout.addWidget(self.btn_presets)
-        for button in (self.btn_midi, self.btn_audio, self.btn_octaves):
-            button.setStyleSheet(menu_btn_style)
-            self.side_menu_layout.addWidget(button)
-        self.btn_octaves.clicked.connect(self.select_octaves)
-        self.main_layout.addWidget(self.side_menu)
+        self.btn_audio = QPushButton("Audio Output Device")
+        device_button_style = "QPushButton{color:#e9e5ff;background:#191a39;text-align:left;padding:12px;border:1px solid #37315e;border-radius:8px;} QPushButton:hover{background:#242047;border-color:#8172be;}"
+        for button in (self.btn_midi, self.btn_audio):
+            button.setStyleSheet(device_button_style)
+            settings_layout.addWidget(button)
+        settings_layout.addStretch()
+        done_button = QPushButton("Done")
+        done_button.setStyleSheet("QPushButton{color:#11132d;background:#80f6ff;padding:9px 18px;border:0;border-radius:8px;font-weight:bold;} QPushButton:hover{background:#a5fbff;}")
+        done_button.clicked.connect(self.settings_dialog.accept)
+        settings_layout.addWidget(done_button, 0, Qt.AlignRight)
 
         self.content_widget = QWidget(self)
         self.content_widget.setObjectName("Content")
@@ -173,13 +160,7 @@ class Window(QWidget):
         self.content_layout.setSpacing(20)
 
         self.header_layout = QHBoxLayout()
-        self.header_layout.setSpacing(15)
-        self.hamburger = QPushButton("☰")
-        self.hamburger.setFixedSize(42, 42)
-        self.hamburger.setCursor(Qt.PointingHandCursor)
-        self.hamburger.setStyleSheet("QPushButton{color:#b8a8ff;font-size:21px;background:#15152f;border:1px solid #37315e;border-radius:12px;} QPushButton:hover{color:#ff75d8;border-color:#ff75d8;}")
-        self.hamburger.clicked.connect(self.toggle_menu)
-        self.header_layout.addWidget(self.hamburger)
+        self.header_layout.setSpacing(12)
 
         brand = QVBoxLayout()
         brand.setSpacing(1)
@@ -193,12 +174,43 @@ class Window(QWidget):
         self.header_layout.addLayout(brand)
         self.header_layout.addStretch()
 
-        self.mute_btn = QPushButton("🔊")
-        self.mute_btn.setFixedSize(46, 42)
+        octave_label = QLabel("OCTAVES")
+        octave_label.setStyleSheet("color:#817ba7;font-size:9px;font-weight:bold;letter-spacing:1px;")
+        self.header_layout.addWidget(octave_label)
+        self.octave_selector = QComboBox()
+        self.octave_selector.addItems([str(octaves) for octaves in range(1, 7)])
+        self.octave_selector.setCurrentText("4")
+        self.octave_selector.setFixedWidth(62)
+        self.octave_selector.setToolTip("Number of piano octaves shown")
+        self.header_layout.addWidget(self.octave_selector)
+
+        self.btn_presets = QToolButton()
+        self.btn_presets.setText("Audio Presets")
+        self.btn_presets.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.btn_presets.setArrowType(Qt.DownArrow)
+        self.btn_presets.setPopupMode(QToolButton.InstantPopup)
+        self.btn_presets.setMinimumWidth(195)
+        self.btn_presets.setCursor(Qt.PointingHandCursor)
+        self.btn_presets.setStyleSheet("QToolButton{color:#e9e5ff;background:#15152f;text-align:left;padding:10px 12px;font-size:12px;border:1px solid #37315e;border-radius:10px;} QToolButton:hover{color:#fff;border-color:#8172be;background:#1b1a3b;} QToolButton::menu-indicator{image:none;}")
+        self.preset_menu = QMenu(self.btn_presets)
+        self.btn_presets.setMenu(self.preset_menu)
+        self.header_layout.addWidget(self.btn_presets)
+
+        self.mute_btn = QPushButton()
+        self.mute_btn.setFixedSize(44, 42)
         self.mute_btn.setCursor(Qt.PointingHandCursor)
-        self.mute_btn.setToolTip("Toggle audio")
+        self.mute_btn.setIconSize(QSize(22, 22))
         self.mute_btn.setStyleSheet("QPushButton{color:#d8d2f2;font-size:19px;background:#15152f;border:1px solid #37315e;border-radius:12px;} QPushButton:hover{color:#80f6ff;border-color:#80f6ff;}")
+        self.set_muted(False)
         self.header_layout.addWidget(self.mute_btn)
+
+        self.settings_btn = QPushButton("⚙")
+        self.settings_btn.setFixedSize(44, 42)
+        self.settings_btn.setCursor(Qt.PointingHandCursor)
+        self.settings_btn.setToolTip("MIDI and audio device settings")
+        self.settings_btn.setStyleSheet("QPushButton{color:#b8a8ff;font-size:20px;background:#15152f;border:1px solid #37315e;border-radius:12px;} QPushButton:hover{color:#ff75d8;border-color:#ff75d8;}")
+        self.settings_btn.clicked.connect(self.open_settings)
+        self.header_layout.addWidget(self.settings_btn)
         self.content_layout.addLayout(self.header_layout)
 
         self.display_frame = QFrame(self.content_widget)
@@ -229,19 +241,10 @@ class Window(QWidget):
         self.display_layout.addStretch(1)
         self.content_layout.addWidget(self.display_frame, 1)
 
-        keyboard_header = QHBoxLayout()
-        keyboard_title = QLabel("KEYBOARD")
-        keyboard_title.setStyleSheet("color:#a59dc9;font-size:10px;font-weight:bold;letter-spacing:3px;")
-        keyboard_hint = QLabel("MIDI NOTE ACTIVITY")
-        keyboard_hint.setStyleSheet("color:#625d83;font-size:9px;letter-spacing:2px;")
-        keyboard_header.addWidget(keyboard_title)
-        keyboard_header.addStretch()
-        keyboard_header.addWidget(keyboard_hint)
-        self.content_layout.addLayout(keyboard_header)
-
         self.main_layout.addWidget(self.content_widget)
         self.layout = self.content_layout
         self.piano = Piano(self)
+        self.octave_selector.currentTextChanged.connect(self.select_octaves)
 
         self.resize(1250, 700)
         self.setMinimumSize(760, 560)
@@ -270,11 +273,55 @@ class Window(QWidget):
                 selected_name = preset.name
 
         if selected_name:
-            self.btn_presets.setText(f"Audio Presets  ·  {selected_name}")
+            self.btn_presets.setText(f"{selected_name}")
 
     def _choose_audio_preset(self, preset_key, preset_name):
-        self.btn_presets.setText(f"Audio Presets  ·  {preset_name}")
+        self.btn_presets.setText(preset_name)
         self.audio_preset_selected.emit(preset_key)
+
+    def set_muted(self, muted):
+        self.mute_btn.setText("")
+        self.mute_btn.setIcon(self._audio_icon(muted))
+        label = "Unmute audio" if muted else "Mute audio"
+        self.mute_btn.setToolTip(label)
+        self.mute_btn.setAccessibleName(label)
+
+    @staticmethod
+    def _audio_icon(muted):
+        pixmap = QPixmap(48, 48)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        color = QColor("#ff75d8" if muted else "#c8bcff")
+        pen = QPen(color, 3.2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        painter.setPen(pen)
+
+        speaker = QPainterPath()
+        speaker.moveTo(8, 19)
+        speaker.lineTo(14, 19)
+        speaker.lineTo(23, 12)
+        speaker.lineTo(23, 36)
+        speaker.lineTo(14, 29)
+        speaker.lineTo(8, 29)
+        speaker.closeSubpath()
+        painter.fillPath(speaker, color)
+        painter.setBrush(Qt.NoBrush)
+
+        if muted:
+            painter.drawLine(29, 19, 39, 29)
+            painter.drawLine(39, 19, 29, 29)
+        else:
+            wave = QPainterPath()
+            wave.moveTo(28, 18)
+            wave.cubicTo(33, 21, 33, 27, 28, 30)
+            painter.drawPath(wave)
+            wave = QPainterPath()
+            wave.moveTo(32, 13)
+            wave.cubicTo(41, 19, 41, 29, 32, 35)
+            painter.drawPath(wave)
+
+        painter.end()
+        return QIcon(pixmap)
 
     def update_note_display(self, active_notes, note_text, chord):
         active_notes = set(active_notes)
@@ -293,26 +340,8 @@ class Window(QWidget):
         self.chord_label.setText(chord)
         self.notes_label.setText(note_text.upper() if note_text else "PLAY A CHORD TO BEGIN")
 
-    def select_octaves(self):
-        num, ok = QInputDialog.getInt(self, "Octaves Shown", "Select number of octaves (1-6):", 4, 1, 6, 1)
-        if ok:
-            self.piano.draw_keys(num)
-            self.adjustSize()
+    def select_octaves(self, value):
+        self.piano.draw_keys(int(value))
 
-    def toggle_menu(self):
-        width = self.side_menu.width()
-        end_width = 250 if width == 0 else 0
-
-        self.anim = QPropertyAnimation(self.side_menu, b"minimumWidth")
-        self.anim.setDuration(300)
-        self.anim.setStartValue(width)
-        self.anim.setEndValue(end_width)
-        self.anim.setEasingCurve(QEasingCurve.InOutQuart)
-        self.anim.start()
-
-        self.anim2 = QPropertyAnimation(self.side_menu, b"maximumWidth")
-        self.anim2.setDuration(300)
-        self.anim2.setStartValue(width)
-        self.anim2.setEndValue(end_width)
-        self.anim2.setEasingCurve(QEasingCurve.InOutQuart)
-        self.anim2.start()
+    def open_settings(self):
+        self.settings_dialog.exec_()

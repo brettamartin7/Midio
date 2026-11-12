@@ -37,7 +37,7 @@ def select_midi_input(parent):
 
 def toggle_mute(window, audio_manager):
     audio_manager.muted = not audio_manager.muted
-    window.mute_btn.setText("🔇" if audio_manager.muted else "🔊")
+    window.set_muted(audio_manager.muted)
 
 
 def main():
@@ -60,9 +60,11 @@ def main():
     controller = NoteController(audio_manager)
 
     window.btn_audio.clicked.connect(
-        lambda: open_audio_settings(window, audio_manager)
+        lambda: open_audio_settings(window.settings_dialog, audio_manager)
     )
-    window.btn_midi.clicked.connect(lambda: select_midi_input(window))
+    window.btn_midi.clicked.connect(
+        lambda: select_midi_input(window.settings_dialog)
+    )
     window.mute_btn.clicked.connect(
         lambda: toggle_mute(window, audio_manager)
     )
