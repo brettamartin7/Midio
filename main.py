@@ -55,6 +55,8 @@ def main():
     audio_manager.set_device("Internal Speakers (Synth)", -1)
 
     window = gui.Window()
+    window.set_audio_presets(audio.PRESETS, audio_manager.preset.key)
+    window.audio_preset_selected.connect(audio_manager.set_preset)
     controller = NoteController(audio_manager)
 
     window.btn_audio.clicked.connect(

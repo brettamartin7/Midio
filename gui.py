@@ -17,6 +17,10 @@ QLineEdit, QListView, QComboBox, QSpinBox {
     background-color: #171936; color: #f3f1ff; border: 1px solid #484274;
     border-radius: 7px; padding: 7px;
 }
+QMenu { background-color:#11132d; color:#e9e5ff; border:1px solid #484274; padding:5px; }
+QMenu::item { padding:8px 24px 8px 10px; border-radius:5px; }
+QMenu::item:selected { background-color:#29234c; color:#ffffff; }
+QMenu::item:checked { color:#80f6ff; }
 """
 
 BLACK_KEY_STYLE = """
@@ -99,6 +103,8 @@ class Piano(QWidget):
 
 
 class Window(QWidget):
+    audio_preset_selected = pyqtSignal(str)
+
     def __init__(self, *args, **kwargs):
         QWidget.__init__(self, *args, **kwargs)
         self.setObjectName("Window")
@@ -124,11 +130,19 @@ class Window(QWidget):
             font-size:13px; border:1px solid transparent; border-radius:8px; }
         QPushButton:hover { color:#fff; background:#211d42; border-color:#443969; }
         """
-        self.btn_modes = QPushButton("Modes")
+        self.btn_presets = QToolButton()
+        self.btn_presets.setText("Audio Presets")
+        self.btn_presets.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.btn_presets.setArrowType(Qt.DownArrow)
+        self.btn_presets.setPopupMode(QToolButton.InstantPopup)
+        self.btn_presets.setStyleSheet("QToolButton { color:#d9d5f3; background:transparent; text-align:left; padding:12px 10px; font-size:13px; border:1px solid transparent; border-radius:8px; } QToolButton:hover { color:#fff; background:#211d42; border-color:#443969; } QToolButton::menu-indicator { image:none; }")
+        self.preset_menu = QMenu(self.btn_presets)
+        self.btn_presets.setMenu(self.preset_menu)
         self.btn_midi = QPushButton("MIDI Input Device")
         self.btn_audio = QPushButton("Audio Settings")
         self.btn_octaves = QPushButton("Octaves Shown")
-        for button in (self.btn_modes, self.btn_midi, self.btn_audio, self.btn_octaves):
+        self.side_menu_layout.addWidget(self.btn_presets)
+        for button in (self.btn_midi, self.btn_audio, self.btn_octaves):
             button.setStyleSheet(menu_btn_style)
             self.side_menu_layout.addWidget(button)
         self.btn_octaves.clicked.connect(self.select_octaves)
@@ -217,6 +231,32 @@ class Window(QWidget):
 
     def setNote(self, input_note):
         self.chord_label.setText(input_note)
+
+    def set_audio_presets(self, presets, selected_key):
+        self.preset_menu.clear()
+        self.preset_actions = QActionGroup(self)
+        self.preset_actions.setExclusive(True)
+        selected_name = None
+
+        for key, preset in presets.items():
+            action = QAction(preset.name, self.preset_menu)
+            action.setCheckable(True)
+            action.setChecked(key == selected_key)
+            self.preset_actions.addAction(action)
+            self.preset_menu.addAction(action)
+            action.triggered.connect(
+                lambda checked=False, preset_key=key, name=preset.name:
+                    self._choose_audio_preset(preset_key, name)
+            )
+            if key == selected_key:
+                selected_name = preset.name
+
+        if selected_name:
+            self.btn_presets.setText(f"Audio Presets  ·  {selected_name}")
+
+    def _choose_audio_preset(self, preset_key, preset_name):
+        self.btn_presets.setText(f"Audio Presets  ·  {preset_name}")
+        self.audio_preset_selected.emit(preset_key)
 
     def update_note_display(self, active_notes, note_text, chord):
         active_notes = set(active_notes)

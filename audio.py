@@ -1,47 +1,145 @@
-import pygame
-import pygame.midi
-import numpy as np
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import logging
 import time
 
+import numpy as np
+import pygame
+import pygame.midi
+
+
+@dataclass(frozen=True)
+class SynthPreset:
+    key: str
+    name: str
+    partials: tuple
+    attack: float
+    decay: float
+    sustain: float
+    release_ms: int
+    gm_program: int
+    strategy: "SoundStrategy"
+    loop: bool = False
+
+
+class SoundStrategy(ABC):
+    """Strategy interface for rendering a preset into a playable note."""
+
+    @abstractmethod
+    def render(self, note, preset, sample_rate, duration):
+        raise NotImplementedError
+
+
+class HarmonicSoundStrategy(SoundStrategy):
+    def render(self, note, preset, sample_rate, duration):
+        frequency = 440.0 * (2.0 ** ((note - 69.0) / 12.0))
+        sample_count = int(sample_rate * duration)
+        t = np.arange(sample_count, dtype=np.float32) / sample_rate
+        wave = np.zeros(sample_count, dtype=np.float32)
+
+        for ratio, amplitude in preset.partials:
+            wave += amplitude * np.sin(2 * np.pi * frequency * ratio * t)
+
+        attack = max(preset.attack, 0.001)
+        decay = max(preset.decay, 0.001)
+        attack_env = np.minimum(t / attack, 1.0)
+        decay_env = preset.sustain + (1.0 - preset.sustain) * np.exp(
+            -np.maximum(t - attack, 0.0) / decay
+        )
+        envelope = np.where(t < attack, attack_env, decay_env)
+        wave *= envelope
+
+        peak = np.max(np.abs(wave))
+        if peak:
+            wave = wave / peak
+        samples = (wave * 32767).astype(np.int16)
+        stereo = np.column_stack((samples, samples))
+        return pygame.sndarray.make_sound(stereo)
+
+
+class BellSoundStrategy(HarmonicSoundStrategy):
+    """Give higher inharmonic partials the faster decay of a struck bell."""
+
+    def render(self, note, preset, sample_rate, duration):
+        frequency = 440.0 * (2.0 ** ((note - 69.0) / 12.0))
+        sample_count = int(sample_rate * duration)
+        t = np.arange(sample_count, dtype=np.float32) / sample_rate
+        wave = np.zeros(sample_count, dtype=np.float32)
+
+        for ratio, amplitude in preset.partials:
+            partial_decay = max(preset.decay / (ratio ** 0.7), 0.02)
+            wave += amplitude * np.sin(
+                2 * np.pi * frequency * ratio * t
+            ) * np.exp(-t / partial_decay)
+
+        attack = max(preset.attack, 0.001)
+        wave *= np.minimum(t / attack, 1.0)
+        peak = np.max(np.abs(wave))
+        if peak:
+            wave = wave / peak
+        samples = (wave * 32767).astype(np.int16)
+        return pygame.sndarray.make_sound(np.column_stack((samples, samples)))
+
+
+HARMONIC_STRATEGY = HarmonicSoundStrategy()
+BELL_STRATEGY = BellSoundStrategy()
+
+PRESETS = {
+    "retro_pluck": SynthPreset(
+        "retro_pluck", "Retro Pluck", ((1, 1.0), (2, 0.48), (3, 0.22)),
+        0.004, 0.24, 0.015, 180, 4, HARMONIC_STRATEGY,
+    ),
+    "warm_keys": SynthPreset(
+        "warm_keys", "Warm Keys", ((1, 1.0), (2, 0.24), (3, 0.08)),
+        0.012, 0.8, 0.24, 280, 0, HARMONIC_STRATEGY, True,
+    ),
+    "glass_bell": SynthPreset(
+        "glass_bell", "Glass Bell", ((1, 1.0), (2.71, 0.38), (5.4, 0.14)),
+        0.002, 1.7, 0.0, 500, 10, BELL_STRATEGY,
+    ),
+    "dream_pad": SynthPreset(
+        "dream_pad", "Dream Pad", ((1, 1.0), (2, 0.2), (3, 0.07)),
+        0.65, 1.0, 0.66, 900, 89, HARMONIC_STRATEGY, True,
+    ),
+}
+
+
 class InternalSynth:
     def __init__(self):
-        # Initialize mixer with CD quality, 16-bit, stereo, buffer 512
-        # We ensure mixer is initialized in AudioManager, but we can set channels here
         pygame.mixer.set_num_channels(32)
         self.sounds = {}
         self.channels = {}
+        self.preset = PRESETS["retro_pluck"]
 
     def get_sound(self, note):
-        if note not in self.sounds:
-            # Generate a simple sine wave with decay (Pluck/Piano-ish)
-            freq = 440.0 * (2.0 ** ((note - 69.0) / 12.0))
-            duration = 2.0
+        cache_key = (self.preset.key, note)
+        if cache_key not in self.sounds:
+            duration = 6.0 if self.preset.loop else 4.0
             sample_rate = 44100
-            n_samples = int(sample_rate * duration)
-            t = np.linspace(0, duration, n_samples, False)
-            
-            # Synthesis: Fundamental + Harmonics with exponential decay
-            wave = np.sin(2 * np.pi * freq * t) * np.exp(-3 * t)
-            wave += 0.5 * np.sin(2 * np.pi * freq * 2 * t) * np.exp(-4 * t)
-            wave += 0.25 * np.sin(2 * np.pi * freq * 3 * t) * np.exp(-5 * t)
-            
-            # Normalize and convert to 16-bit int
-            wave = (wave * 32767 / np.max(np.abs(wave))).astype(np.int16)
-            stereo = np.column_stack((wave, wave))
-            
-            self.sounds[note] = pygame.sndarray.make_sound(stereo)
-        return self.sounds[note]
+            self.sounds[cache_key] = self.preset.strategy.render(
+                note, self.preset, sample_rate, duration
+            )
+        return self.sounds[cache_key]
+
+    def set_preset(self, preset):
+        if preset.key == self.preset.key:
+            return
+        for channel in self.channels.values():
+            if channel:
+                channel.fadeout(self.preset.release_ms)
+        self.channels.clear()
+        self.sounds.clear()
+        self.preset = preset
 
     def note_on(self, note, velocity):
         sound = self.get_sound(note)
         sound.set_volume(velocity / 127.0)
-        # Play and store channel to control later
-        self.channels[note] = sound.play()
+        self.channels[note] = sound.play(loops=-1 if self.preset.loop else 0)
 
     def note_off(self, note, velocity):
-        if note in self.channels and self.channels[note]:
-            self.channels[note].fadeout(300)
+        channel = self.channels.pop(note, None)
+        if channel:
+            channel.fadeout(self.preset.release_ms)
 
     def close(self):
         pygame.mixer.stop()
@@ -57,6 +155,9 @@ class MidiOutputAdapter:
     def note_off(self, note, velocity):
         self.midi_out.note_off(note, velocity)
 
+    def set_preset(self, preset):
+        self.midi_out.set_instrument(preset.gm_program)
+
     def close(self):
         self.midi_out.close()
 
@@ -64,6 +165,7 @@ class AudioManager:
     def __init__(self):
         self.muted = False
         self.output = None
+        self.preset = PRESETS["retro_pluck"]
         try:
             pygame.init()
             pygame.midi.init()
@@ -95,11 +197,26 @@ class AudioManager:
         else:
             self.output = MidiOutputAdapter(device_id)
             logging.info(f"Audio output set to MIDI device: {name} (ID: {device_id})")
+
+        self.output.set_preset(self.preset)
         
         # Play test note
         self.output.note_on(60, 127)
         time.sleep(0.2)
         self.output.note_off(60, 127)
+
+    def set_preset(self, preset_key):
+        try:
+            preset = PRESETS[preset_key]
+        except KeyError as exc:
+            raise ValueError(f"Unknown audio preset: {preset_key}") from exc
+
+        self.preset = preset
+        if isinstance(self.output, InternalSynth):
+            self.output.set_preset(preset)
+        elif isinstance(self.output, MidiOutputAdapter):
+            self.output.set_preset(preset)
+        logging.info("Audio preset selected: %s", preset.name)
 
     def close(self):
         """Release audio and MIDI resources during application shutdown."""
