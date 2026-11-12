@@ -5,7 +5,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 import logging
 
-from chords import MAJOR_CHORDS
+from chords import MAJOR_CHORDS, PROGRESSIONS, resolve_progression
 
 
 APP_STYLE = """
@@ -177,6 +177,12 @@ class Window(QWidget):
         self.setObjectName("Window")
         self.setStyleSheet(APP_STYLE)
         self.selected_chord = None
+        self.progression_tonic = None
+        self.selected_progression = None
+        self.progression_chords = ()
+        self.progression_step = 0
+        self.progression_status_override = ""
+        self.library_mode = "chords"
         self.current_active_notes = set()
         self.current_note_text = ""
         self.current_chord = "Invalid chord"
@@ -323,11 +329,32 @@ class Window(QWidget):
         library_header.addWidget(self.clear_chord_button)
         library_layout.addLayout(library_header)
 
+        tabs_layout = QHBoxLayout()
+        tabs_layout.setSpacing(6)
+        tab_style = "QPushButton{color:#817ba7;background:#191a39;border:1px solid #37315e;border-radius:7px;padding:7px 4px;font-size:9px;font-weight:bold;letter-spacing:1px;} QPushButton:checked{color:#fff;background:#29234c;border-color:#8172be;} QPushButton:hover{color:#fff;}"
+        self.chords_tab = QPushButton("CHORDS")
+        self.progressions_tab = QPushButton("PROGRESSIONS")
+        for tab in (self.chords_tab, self.progressions_tab):
+            tab.setCheckable(True)
+            tab.setCursor(Qt.PointingHandCursor)
+            tab.setStyleSheet(tab_style)
+            tabs_layout.addWidget(tab)
+        self.chords_tab.setChecked(True)
+        self.chords_tab.clicked.connect(lambda: self.set_library_mode("chords"))
+        self.progressions_tab.clicked.connect(self.toggle_progressions_view)
+        library_layout.addLayout(tabs_layout)
+
+        self.library_stack = QStackedWidget()
+        self.chords_page = QWidget()
+        chords_page_layout = QVBoxLayout(self.chords_page)
+        chords_page_layout.setContentsMargins(0, 0, 0, 0)
+        chords_page_layout.setSpacing(8)
         library_subtitle = QLabel("MAJOR TRIADS")
         library_subtitle.setStyleSheet("color:#625d83;font-size:9px;font-weight:bold;letter-spacing:2px;border:none;")
-        library_layout.addWidget(library_subtitle)
+        chords_page_layout.addWidget(library_subtitle)
 
         chord_grid = QGridLayout()
+        chord_grid.setContentsMargins(0, 0, 0, 0)
         chord_grid.setHorizontalSpacing(7)
         chord_grid.setVerticalSpacing(7)
         chord_button_style = "QPushButton{color:#c9c2e5;background:#191a39;border:1px solid #37315e;border-radius:8px;font-size:12px;font-weight:bold;padding:8px 2px;} QPushButton:hover{color:#fff;background:#262047;border-color:#8172be;} QPushButton:checked{color:#fff;background:#55275f;border:1px solid #ff75d8;}"
@@ -347,8 +374,62 @@ class Window(QWidget):
                 lambda checked=False, chord=chord_definition: self.select_chord(chord)
             )
             chord_grid.addWidget(button, index // 3, index % 3)
-        library_layout.addLayout(chord_grid)
-        library_layout.addStretch()
+        chords_page_layout.addLayout(chord_grid)
+        chords_page_layout.addStretch()
+        self.library_stack.addWidget(self.chords_page)
+
+        self.progressions_page = QWidget()
+        progression_page_layout = QVBoxLayout(self.progressions_page)
+        progression_page_layout.setContentsMargins(0, 0, 0, 0)
+        progression_page_layout.setSpacing(7)
+        key_row = QHBoxLayout()
+        self.progression_key_label = QLabel("KEY · SELECT A CHORD")
+        self.progression_key_label.setStyleSheet("color:#817ba7;font-size:9px;font-weight:bold;letter-spacing:1px;border:none;")
+        self.change_key_button = QToolButton()
+        self.change_key_button.setText("CHANGE")
+        self.change_key_button.setCursor(Qt.PointingHandCursor)
+        self.change_key_button.setStyleSheet("QToolButton{color:#80f6ff;background:transparent;border:none;font-size:9px;font-weight:bold;}")
+        self.change_key_button.clicked.connect(lambda: self.set_library_mode("chords"))
+        key_row.addWidget(self.progression_key_label)
+        key_row.addStretch()
+        key_row.addWidget(self.change_key_button)
+        progression_page_layout.addLayout(key_row)
+
+        self.progression_button_group = QButtonGroup(self)
+        self.progression_button_group.setExclusive(True)
+        self.progression_buttons = {}
+        progression_button_style = "QPushButton{color:#c9c2e5;background:#191a39;text-align:left;border:1px solid #37315e;border-radius:7px;padding:8px;font-size:10px;font-weight:bold;} QPushButton:hover{color:#fff;background:#262047;border-color:#8172be;} QPushButton:checked{color:#fff;background:#55275f;border-color:#ff75d8;} QPushButton:disabled{color:#514d70;background:#14152d;border-color:#292644;}"
+        for progression in PROGRESSIONS:
+            button = QPushButton(progression.name)
+            button.setCheckable(True)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setStyleSheet(progression_button_style)
+            button.setEnabled(False)
+            button.clicked.connect(
+                lambda checked=False, item=progression: self.select_progression(item)
+            )
+            self.progression_button_group.addButton(button)
+            self.progression_buttons[progression.key] = button
+            progression_page_layout.addWidget(button)
+
+        self.progression_steps_layout = QHBoxLayout()
+        self.progression_steps_layout.setSpacing(4)
+        progression_page_layout.addLayout(self.progression_steps_layout)
+        step_controls = QHBoxLayout()
+        self.previous_step_button = QPushButton("‹ Previous")
+        self.next_step_button = QPushButton("Next ›")
+        step_button_style = "QPushButton{color:#c9c2e5;background:#191a39;border:1px solid #37315e;border-radius:7px;padding:6px;font-size:9px;font-weight:bold;} QPushButton:hover{color:#fff;border-color:#8172be;} QPushButton:disabled{color:#514d70;background:#14152d;border-color:#292644;}"
+        self.previous_step_button.setStyleSheet(step_button_style)
+        self.next_step_button.setStyleSheet(step_button_style)
+        self.previous_step_button.clicked.connect(lambda: self.set_progression_step(self.progression_step - 1))
+        self.next_step_button.clicked.connect(lambda: self.set_progression_step(self.progression_step + 1))
+        step_controls.addWidget(self.previous_step_button)
+        step_controls.addWidget(self.next_step_button)
+        progression_page_layout.addLayout(step_controls)
+        progression_page_layout.addStretch()
+        self.library_stack.addWidget(self.progressions_page)
+        library_layout.addWidget(self.library_stack, 1)
+
         activity_layout.addWidget(self.chord_library_frame)
         self.content_layout.addLayout(activity_layout, 1)
 
@@ -356,6 +437,7 @@ class Window(QWidget):
         self.layout = self.content_layout
         self.piano = Piano(self)
         self.octave_selector.currentTextChanged.connect(self.select_octaves)
+        self._update_progression_ui()
 
         self.resize(1250, 700)
         self.setMinimumSize(760, 560)
@@ -438,44 +520,236 @@ class Window(QWidget):
         self.current_active_notes = set(active_notes)
         self.current_note_text = note_text
         self.current_chord = chord
+
+        if (
+            self.library_mode == "progressions"
+            and self.progression_chords
+            and self.progression_step < len(self.progression_chords)
+        ):
+            target = self.progression_chords[self.progression_step]
+            active_pitch_classes = {note % 12 for note in self.current_active_notes}
+            if active_pitch_classes == target.pitch_classes:
+                if self.progression_step + 1 < len(self.progression_chords):
+                    self.progression_step += 1
+                    next_chord = self.progression_chords[self.progression_step]
+                    self.progression_status_override = (
+                        f"CHORD MATCH  ·  NEXT {next_chord.short_name}"
+                    )
+                    self._render_progression_steps()
+                else:
+                    self.progression_status_override = "PROGRESSION COMPLETE"
+            else:
+                self.progression_status_override = ""
+
         self._refresh_chord_display()
 
     def select_chord(self, chord_definition):
-        if (
-            self.selected_chord
-            and self.selected_chord.key == chord_definition.key
-        ):
-            self.clear_chord_selection()
-            return
+        old_tonic = self.progression_tonic
+        self.progression_tonic = chord_definition
+        self.progression_status_override = ""
+        tonic_changed = (
+            old_tonic is None or old_tonic.root_pitch_class != chord_definition.root_pitch_class
+        )
 
-        self.selected_chord = chord_definition
-        self.piano.set_target_notes(
-            chord_definition.voicing_indices(len(self.piano.keys))
+        if self.selected_chord and self.selected_chord.key == chord_definition.key:
+            self.selected_chord = None
+            self.chord_button_group.setExclusive(False)
+            self.chord_buttons[chord_definition.key].setChecked(False)
+            self.chord_button_group.setExclusive(True)
+        else:
+            self.selected_chord = chord_definition
+
+        if tonic_changed and self.selected_progression:
+            self.progression_step = 0
+            self.progression_status_override = ""
+        self._update_progression_ui()
+
+    def clear_chord_selection(self):
+        self.progression_status_override = ""
+        if self.library_mode == "progressions":
+            self.selected_progression = None
+            self.progression_chords = ()
+            self.progression_button_group.setExclusive(False)
+            for button in self.progression_buttons.values():
+                button.setChecked(False)
+            self.progression_button_group.setExclusive(True)
+            self.progression_step = 0
+            self._render_progression_steps()
+        else:
+            self.selected_chord = None
+            self.chord_button_group.setExclusive(False)
+            for button in self.chord_buttons.values():
+                button.setChecked(False)
+            self.chord_button_group.setExclusive(True)
+        self._refresh_chord_display()
+
+    def toggle_progressions_view(self):
+        target_mode = "chords" if self.library_mode == "progressions" else "progressions"
+        self.set_library_mode(target_mode)
+
+    def set_library_mode(self, mode):
+        self.library_mode = mode
+        self.chords_tab.setChecked(mode == "chords")
+        self.progressions_tab.setChecked(mode == "progressions")
+        self.library_stack.setCurrentWidget(
+            self.chords_page if mode == "chords" else self.progressions_page
+        )
+        self.progression_status_override = ""
+        self.clear_chord_button.setText(
+            "CLEAR GUIDE" if mode == "progressions" else "CLEAR TARGET"
         )
         self._refresh_chord_display()
 
-    def clear_chord_selection(self):
-        self.selected_chord = None
-        self.chord_button_group.setExclusive(False)
-        for button in self.chord_buttons.values():
-            button.setChecked(False)
-        self.chord_button_group.setExclusive(True)
-        self.piano.set_target_notes(())
+    def select_progression(self, progression):
+        if not self.progression_tonic:
+            return
+        self.selected_progression = progression
+        self.progression_chords = resolve_progression(
+            progression, self.progression_tonic
+        )
+        self.progression_step = 0
+        self.progression_status_override = ""
+        button = self.progression_buttons[progression.key]
+        button.setChecked(True)
+        self._render_progression_steps()
         self._refresh_chord_display()
+
+    def set_progression_step(self, step):
+        if not self.progression_chords:
+            return
+        self.progression_step = max(
+            0, min(step, len(self.progression_chords) - 1)
+        )
+        self.progression_status_override = ""
+        self._render_progression_steps()
+        self._refresh_chord_display()
+
+    def _update_progression_ui(self):
+        self.clear_chord_button.setText(
+            "CLEAR GUIDE" if self.library_mode == "progressions" else "CLEAR TARGET"
+        )
+        has_tonic = self.progression_tonic is not None
+        if has_tonic:
+            self.progression_key_label.setText(
+                f"KEY  ·  {self.progression_tonic.root} MAJOR"
+            )
+        else:
+            self.progression_key_label.setText("KEY  ·  SELECT A CHORD")
+        for button in self.progression_buttons.values():
+            button.setEnabled(has_tonic)
+
+        if self.selected_progression and has_tonic:
+            self.progression_chords = resolve_progression(
+                self.selected_progression, self.progression_tonic
+            )
+        else:
+            self.progression_chords = ()
+        self._render_progression_steps()
+        self._refresh_chord_display()
+
+    def _render_progression_steps(self):
+        if hasattr(self, "progression_step_group"):
+            self.progression_step_group.setExclusive(False)
+            for button in self.progression_step_group.buttons():
+                self.progression_step_group.removeButton(button)
+            self.progression_step_group.deleteLater()
+        while self.progression_steps_layout.count():
+            item = self.progression_steps_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        self.progression_step_buttons = []
+        if not self.progression_chords or not self.selected_progression:
+            self.previous_step_button.setEnabled(False)
+            self.next_step_button.setEnabled(False)
+            return
+
+        self.progression_step_group = QButtonGroup(self)
+        self.progression_step_group.setExclusive(True)
+        step_style = "QPushButton{color:#b4acca;background:#171832;border:1px solid #37315e;border-radius:6px;padding:5px 1px;font-size:9px;font-weight:bold;} QPushButton:checked{color:#fff;background:#55275f;border-color:#ff75d8;} QPushButton:hover{border-color:#8172be;}"
+        for index, (step, chord) in enumerate(
+            zip(self.selected_progression.steps, self.progression_chords)
+        ):
+            button = QPushButton(f"{step.numeral}\n{chord.short_name}")
+            button.setCheckable(True)
+            button.setChecked(index == self.progression_step)
+            button.setToolTip(chord.name)
+            button.setStyleSheet(step_style)
+            self.progression_step_group.addButton(button)
+            button.clicked.connect(
+                lambda checked=False, step_index=index: self.set_progression_step(step_index)
+            )
+            self.progression_step_buttons.append(button)
+            self.progression_steps_layout.addWidget(button, 1)
+
+        self.previous_step_button.setEnabled(self.progression_step > 0)
+        self.next_step_button.setEnabled(
+            self.progression_step < len(self.progression_chords) - 1
+        )
+
+    def _visible_target_chord(self):
+        if self.library_mode == "progressions":
+            if (
+                self.progression_chords
+                and self.progression_step < len(self.progression_chords)
+            ):
+                return self.progression_chords[self.progression_step]
+            return None
+        return self.selected_chord
 
     def _refresh_chord_display(self):
         self.piano.set_active_notes(self.current_active_notes)
-        if self.selected_chord:
-            chord = self.selected_chord
-            self.display_kicker.setText("CHORD TARGET")
+        target = self._visible_target_chord()
+        target_notes = (
+            target.voicing_indices(len(self.piano.keys)) if target else ()
+        )
+        self.piano.set_target_notes(target_notes)
+
+        if self.library_mode == "progressions" and not self.progression_tonic:
+            self.display_kicker.setText("PROGRESSION GUIDE")
+            self.chord_label.setFont(QFont("Arial", 36, QFont.Bold))
+            self.chord_label.setStyleSheet("color:#f4eaff;border:none;")
+            self.chord_label.setText("Choose a key")
+            self.notes_label.setStyleSheet("color:#9b91c5;border:none;letter-spacing:2px;")
+            self.notes_label.setText("SELECT A MAJOR CHORD IN CHORDS")
+            self.live_chord_label.clear()
+            return
+
+        if self.library_mode == "progressions" and not self.selected_progression:
+            self.display_kicker.setText(
+                f"KEY  ·  {self.progression_tonic.root.upper()} MAJOR"
+            )
+            self.chord_label.setFont(QFont("Arial", 34, QFont.Bold))
+            self.chord_label.setStyleSheet("color:#f4eaff;border:none;")
+            self.chord_label.setText("Choose a progression")
+            self.notes_label.setStyleSheet("color:#9b91c5;border:none;letter-spacing:2px;")
+            self.notes_label.setText("SELECT A PATTERN TO BEGIN")
+            self.live_chord_label.clear()
+            return
+
+        if target:
+            if self.library_mode == "progressions":
+                degree = self.selected_progression.steps[self.progression_step].numeral
+                self.display_kicker.setText(
+                    f"{self.selected_progression.name}  ·  STEP {self.progression_step + 1}/4  ·  {degree}"
+                )
+            else:
+                self.display_kicker.setText("CHORD TARGET")
             self.chord_label.setFont(QFont("Arial", 72, QFont.Bold))
             self.chord_label.setStyleSheet("color:#f4eaff;border:none;")
-            self.chord_label.setText(chord.name)
+            self.chord_label.setText(target.name)
             self.notes_label.setStyleSheet("color:#ffb8ec;border:none;letter-spacing:2px;")
-            self.notes_label.setText("NOTES TO PLAY  ·  " + "  ·  ".join(chord.note_names))
+            self.notes_label.setText(
+                "NOTES TO PLAY  ·  " + "  ·  ".join(target.note_names)
+            )
 
-            active_pitch_classes = {note % 12 for note in self.current_active_notes}
-            if chord.pitch_classes.issubset(active_pitch_classes):
+            active_pitch_classes = {
+                note % 12 for note in self.current_active_notes
+            }
+            if self.progression_status_override:
+                status = self.progression_status_override
+            elif target.pitch_classes == active_pitch_classes:
                 status = "CHORD COMPLETE"
             elif self.current_active_notes:
                 heard = self.current_chord
@@ -505,10 +779,7 @@ class Window(QWidget):
 
     def select_octaves(self, value):
         self.piano.draw_keys(int(value))
-        if self.selected_chord:
-            self.piano.set_target_notes(
-                self.selected_chord.voicing_indices(len(self.piano.keys))
-            )
+        self._refresh_chord_display()
 
     def open_settings(self):
         self.settings_dialog.exec_()
